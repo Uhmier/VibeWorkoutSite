@@ -41,12 +41,6 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-        .gemini-response {
-            border-left: 4px solid #10b981;
-            padding-left: 1rem;
-            margin-top: 1rem;
-            background-color: #f0fdf4;
-        }
     </style>
 </head>
 <body class="text-gray-800">
@@ -118,7 +112,7 @@
         </div>
 
         <div class="bg-white p-4 sm:p-6 md:p-8 rounded-2xl shadow-lg mb-8">
-            <div id="controls" class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+            <div id="controls" class="flex justify-center sm:justify-between items-center mb-6 gap-4">
                 <div class="flex items-center space-x-2 sm:space-x-4">
                     <button id="prev-month" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold p-2 rounded-full transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
@@ -128,9 +122,6 @@
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                     </button>
                 </div>
-                 <button id="analyze-week-btn" class="bg-green-100 text-green-800 font-bold py-2 px-4 rounded-lg hover:bg-green-200 transition-colors">
-                    ✨ Analyze Week
-                </button>
             </div>
             <div id="calendar" class="grid grid-cols-7 gap-2"></div>
         </div>
@@ -187,7 +178,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const rescheduleBanner = document.getElementById('reschedule-banner');
     const cancelRescheduleBtn = document.getElementById('cancel-reschedule');
-    const analyzeWeekBtn = document.getElementById('analyze-week-btn');
     
     const today = new Date();
     today.setHours(0, 0, 0, 0); 
@@ -276,99 +266,6 @@ document.addEventListener('DOMContentLoaded', function () {
             document.body.removeChild(link);
         }
     }
-
-    function simpleMarkdownToHtml(text) {
-        return text
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\* (.*?)(?=\n\* |$)/g, '<li class="ml-4 list-disc">$1</li>')
-            .replace(/\n/g, '<br>');
-    }
-
-    async function callGeminiAPI(prompt, button) {
-        const originalText = button.innerHTML;
-        button.disabled = true;
-        button.innerHTML = 'Generating...';
-
-        try {
-            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
-            const payload = { contents: chatHistory };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${apiKey}`;
-            
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                throw new Error(`API request failed with status ${response.status}`);
-            }
-
-            const result = await response.json();
-            
-            if (result.candidates && result.candidates[0] && result.candidates[0].content.parts[0]) {
-                return result.candidates[0].content.parts[0].text;
-            } else {
-                return "Sorry, I couldn't generate a response. Please try again.";
-            }
-        } catch (error) {
-            console.error('Gemini API Error:', error);
-            return `Error: Could not retrieve insights. ${error.message}`;
-        } finally {
-            button.disabled = false;
-            button.innerHTML = originalText;
-        }
-    }
-
-    async function getTodaysFocus(button) {
-        const todayStr = today.toISOString().split('T')[0];
-        const workout = trainingData.find(w => w.date === todayStr);
-        if (!workout || (workout.am === '(Rest)' && workout.pm === '(Rest)')) {
-            alert("No workouts scheduled for today to analyze.");
-            return;
-        }
-
-        const prompt = `You are a world-class hybrid athlete coach. For a user with the following workouts today - AM: ${workout.am}, PM: ${workout.pm} - provide a brief, motivational "Today's Focus". Include 1-2 sentences on mindset, 1 nutritional tip, and 1 recovery tip. Keep it concise, use markdown for formatting (bolding and bullet points), and speak directly to the athlete.`;
-
-        const responseText = await callGeminiAPI(prompt, button);
-        const htmlResponse = simpleMarkdownToHtml(responseText);
-
-        let responseContainer = document.getElementById('gemini-focus-response');
-        if (!responseContainer) {
-            responseContainer = document.createElement('div');
-            responseContainer.id = 'gemini-focus-response';
-            responseContainer.className = 'gemini-response p-4 rounded-lg text-sm';
-            document.getElementById('today-content').appendChild(responseContainer);
-        }
-        responseContainer.innerHTML = htmlResponse;
-    }
-
-    async function getWeeklyAnalysis(button) {
-        const firstDayOfWeek = new Date(currentDate);
-        while (firstDayOfWeek.getDay() !== 0) {
-            firstDayOfWeek.setDate(firstDayOfWeek.getDate() - 1);
-        }
-        
-        let weekPlan = '';
-        const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-        for (let i = 0; i < 7; i++) {
-            const day = new Date(firstDayOfWeek);
-            day.setDate(day.getDate() + i);
-            const dateStr = day.toISOString().split('T')[0];
-            const workout = trainingData.find(w => w.date === dateStr) || { am: '(Rest)', pm: '(Rest)'};
-            weekPlan += `${weekDays[i]}: AM - ${workout.am}, PM - ${workout.pm}\n`;
-        }
-
-        const prompt = `You are an expert athletic training analyst. Here is my training plan for the week of ${firstDayOfWeek.toLocaleDateString()}:\n${weekPlan}\nPlease provide a brief strategic analysis. Identify the peak training day(s), suggest one key recovery strategy for the week, and offer a single sentence of encouragement. Use markdown.`;
-
-        const responseText = await callGeminiAPI(prompt, button);
-        
-        modalDateEl.textContent = `Analysis for Week of ${firstDayOfWeek.toLocaleDateString()}`;
-        modalContentEl.innerHTML = `<div class="text-gray-800">${simpleMarkdownToHtml(responseText)}</div>`;
-        modal.classList.remove('hidden');
-    }
     
     function getWorkoutIcon(session) {
         if (!session || session === '(Rest)') return '😴';
@@ -376,7 +273,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (session.includes('Strength')) return '🏋️';
         if (session.includes('Basketball')) return '🏀';
         if (session.includes('Game') || session.includes('RACE')) return '🏆';
-        if (session.includes('Recovery')) return '🧘';
+        if (session.includes('Recovery')) return '🧘🏾‍♂️';
         return '⚡';
     }
 
@@ -637,13 +534,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </div>
                     <p class="text-gray-700 pt-2">${workout.details || ""}</p>
                 </div>
-                <div class="mt-4">
-                    <button id="get-focus-btn" class="w-full bg-emerald-100 text-emerald-800 font-bold py-2 px-4 rounded-lg hover:bg-emerald-200 transition-colors">
-                        ✨ Today's Focus
-                    </button>
-                </div>
             `;
-            document.getElementById('get-focus-btn').addEventListener('click', (e) => getTodaysFocus(e.target));
         } else {
             container.innerHTML = `<p class="text-gray-600">No training scheduled for today. Enjoy the rest!</p>`;
         }
@@ -763,8 +654,6 @@ document.addEventListener('DOMContentLoaded', function () {
             expandIcon.classList.toggle('hidden');
             collapseIcon.classList.toggle('hidden');
         });
-
-        analyzeWeekBtn.addEventListener('click', (e) => getWeeklyAnalysis(e.target));
     }
 
     loadDataBtn.addEventListener('click', () => {
