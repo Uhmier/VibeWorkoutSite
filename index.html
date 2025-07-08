@@ -40,18 +40,6 @@
         .reschedule-mode .session-slot:hover {
             background-color: #dcfce7; /* green-100 */
         }
-        .chart-container {
-            position: relative;
-            width: 100%;
-            max-width: 800px;
-            margin-left: auto;
-            margin-right: auto;
-            height: 300px;
-            max-height: 400px;
-        }
-        @media (min-width: 768px) {
-            .chart-container { height: 400px; }
-        }
         button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -149,13 +137,6 @@
             <div id="calendar" class="grid grid-cols-7 gap-2"></div>
         </div>
 
-        <div class="bg-white p-4 sm:p-6 md:p-8 rounded-2xl shadow-lg">
-            <h2 class="text-2xl font-bold mb-4 text-center text-gray-900">Long Run Progression (Miles)</h2>
-            <p class="text-center text-gray-600 mb-6">This chart visualizes your endurance build-up over the entire training block. It's a key indicator of your readiness for race day.</p>
-            <div class="chart-container">
-                <canvas id="progressionChart"></canvas>
-            </div>
-        </div>
     </div>
 
     <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex justify-center items-center p-4">
@@ -188,7 +169,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const prevMonthBtn = document.getElementById('prev-month');
     const nextMonthBtn = document.getElementById('next-month');
     const filterBtns = document.querySelectorAll('.filter-btn');
-    const progressionChartCtx = document.getElementById('progressionChart').getContext('2d');
 
     const modal = document.getElementById('modal');
     const closeModalBtn = document.getElementById('close-modal');
@@ -198,10 +178,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const rescheduleBanner = document.getElementById('reschedule-banner');
     const cancelRescheduleBtn = document.getElementById('cancel-reschedule');
     
-    const today = new Date("2025-07-08T12:00:00Z");
+    const today = new Date();
     today.setHours(0, 0, 0, 0); 
     let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
-    let progressionChart = null;
 
     let isRescheduling = false;
     let workoutToReschedule = null; 
@@ -253,8 +232,9 @@ document.addEventListener('DOMContentLoaded', function () {
         trainingData.forEach(row => {
             const values = headers.map(header => {
                 let value = row[header] || '';
+                // Quote values that contain a comma
                 if (value.includes(',')) {
-                    value = `"${value}"`;
+                    value = `"${value.replace(/"/g, '""')}"`;
                 }
                 return value;
             });
@@ -537,48 +517,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function createProgressionChart() {
-        if(progressionChart) {
-            progressionChart.destroy();
-        }
-        const longRuns = trainingData.filter(d => (d.am && d.am.includes('Long Run')) || (d.pm && d.pm.includes('Long Run')));
-        const labels = longRuns.map(d => {
-            const date = new Date(d.date + 'T12:00:00');
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        });
-        const data = longRuns.map(d => {
-            const match = d.details.match(/(\d+\.?\d*)/);
-            return match ? parseFloat(match[1]) : 0;
-        });
-
-        progressionChart = new Chart(progressionChartCtx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Long Run Distance (Miles)',
-                    data: data,
-                    borderColor: '#4f46e5', // indigo-600
-                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                    borderWidth: 3,
-                    tension: 0.3,
-                    fill: true,
-                    pointBackgroundColor: '#4f46e5',
-                    pointRadius: 5,
-                    pointHoverRadius: 7
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: { beginAtZero: true, title: { display: true, text: 'Miles' } }
-                },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-
     function updateTodaysWorkout() {
         const todayStr = today.toISOString().split('T')[0];
         const workout = trainingData.find(w => w.date === todayStr);
@@ -612,7 +550,6 @@ document.addEventListener('DOMContentLoaded', function () {
     function refreshApp() {
         renderCalendar();
         updateTodaysWorkout();
-        createProgressionChart();
     }
     
     function initializeApp() {
