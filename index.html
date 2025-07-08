@@ -9,6 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Neutral Grays with Indigo/Blue accents -->
+    <!-- Application Structure Plan: A dashboard-centric SPA with a dynamic monthly calendar as the primary view. Key interactions include month navigation, workout type filtering, and a modal for daily details. A progression chart for long runs provides a key performance visual. Added functionality for CRUD operations (Create/Update/Delete/Reschedule) on workouts directly from the UI, with granular session rescheduling between any day/slot. Data is fetched from a user-provided public Google Sheet URL for persistence, and changes can be exported to a CSV file. -->
+    <!-- Visualization & Content Choices: Calendar (HTML/JS) -> Organize/Interact. Line Chart (Chart.js) -> Change. Filters (JS/CSS) -> Organize. Icons (Unicode) -> Inform. Modal (HTML/JS) -> Inform/Update. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -18,13 +22,15 @@
             transition: all 0.2s ease-in-out;
             min-height: 120px;
         }
-        .calendar-day:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        .calendar-day:hover .day-number {
+             color: #4f46e5;
+        }
+        .session-slot {
+            transition: background-color 0.2s;
+            border-radius: 0.375rem;
         }
         .highlight {
             background-color: #dbeafe; /* blue-100 */
-            border-color: #93c5fd; /* blue-300 */
         }
         .race-day {
             background-color: #c4b5fd; /* violet-300 */
@@ -32,12 +38,11 @@
             border-color: #8b5cf6; /* violet-500 */
             font-weight: 700;
         }
-        .reschedule-mode .calendar-day:not(.bg-gray-100) {
+        .reschedule-mode .session-slot {
             cursor: copy;
         }
-        .reschedule-mode .calendar-day:not(.bg-gray-100):hover {
+        .reschedule-mode .session-slot:hover {
             background-color: #dcfce7; /* green-100 */
-            border-color: #86efac; /* green-300 */
         }
         .chart-container {
             position: relative;
@@ -59,10 +64,49 @@
 </head>
 <body class="text-gray-800">
 
-    <div id="app-container" class="container mx-auto p-4 md:p-8">
-        <div id="reschedule-banner" class="hidden bg-yellow-200 text-yellow-800 p-3 rounded-lg text-center mb-4 font-semibold">
-            Reschedule Mode: Click on a new date to move the workout. <button id="cancel-reschedule" class="ml-4 font-bold underline">Cancel</button>
+    <div id="setup-container" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-[100] flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full text-center">
+            <h2 class="text-3xl font-bold text-gray-900 mb-4">Welcome! Let's Connect Your Data.</h2>
+            <p class="text-gray-600 mb-6">
+                This dashboard reads your training plan from a public Google Sheet. Please paste the public URL to your sheet's CSV file below.
+                <button id="show-help-btn" class="text-indigo-600 font-semibold underline text-sm ml-1">(How do I do this?)</button>
+            </p>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="url" id="sheet-url-input" placeholder="Paste your Google Sheet CSV URL here" class="flex-grow block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3">
+                <button id="load-data-btn" class="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Load Plan</button>
+            </div>
+             <p id="setup-error" class="text-red-500 mt-4 text-sm hidden"></p>
         </div>
+    </div>
+    
+    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[101] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-8 relative">
+            <button id="close-help-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-gray-900">How to Get Your Google Sheet URL</h3>
+            <div class="text-left space-y-4 text-gray-700">
+                <p><strong>Step 1: Format Your Google Sheet</strong><br>Create a sheet with the exact column headers in the first row: <code>date</code>, <code>am</code>, <code>pm</code>, <code>details</code>. Dates must be in <code>YYYY-MM-DD</code> format.</p>
+                <p><strong>Step 2: Publish to the Web</strong><br>In Google Sheets, go to <code>File</code> > <code>Share</code> > <code>Publish to web</code>.</p>
+                <p><strong>Step 3: Select CSV Format</strong><br>In the "Link" tab, make sure your training sheet is selected. Then, in the dropdown that says "Web page", change it to <code>Comma-separated values (.csv)</code>.</p>
+                <p><strong>Step 4: Publish and Copy URL</strong><br>Click the green "Publish" button and confirm. A URL will be generated. Copy this entire URL.</p>
+                <p><strong>Step 5: Paste in Dashboard</strong><br>Paste the copied URL into the input box on the dashboard and click "Load Plan". The app will remember your URL for next time.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div id="app-container" class="container mx-auto p-4 md:p-8 hidden">
+        <div id="reschedule-banner" class="hidden bg-yellow-200 text-yellow-800 p-3 rounded-lg text-center mb-4 font-semibold">
+            Reschedule Mode: Click an AM or PM slot on any day to move the workout. <button id="cancel-reschedule" class="ml-4 font-bold underline">Cancel</button>
+        </div>
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div>
+              <p class="font-bold">Important Note</p>
+              <p>Changes are temporary for this session. To save, export your plan and import the file into Google Sheets.</p>
+          </div>
+          <button id="export-plan-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap">
+            📤 Export Updated Plan
+          </button>
+        </div>
+        
         <header class="text-center mb-8">
             <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Hybrid Athlete Dashboard</h1>
             <p class="text-lg text-gray-600 mt-2">Your complete training journey from July to November 2025.</p>
@@ -129,153 +173,20 @@
     </div>
 
 <script>
-let trainingData = [
-    { date: "2025-07-08", am: "Run: Intervals", pm: "Basketball", details: "Run: 4 mi total (incl. 6x200m hard w/ 200m jog)." },
-    { date: "2025-07-09", am: "Agile Strength", pm: "(Rest)", details: "Box jumps, med ball slams, cone drills." },
-    { date: "2025-07-10", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 4 mi total (incl. 2 mi @ Tempo Pace)." },
-    { date: "2025-07-11", am: "Active Recovery", pm: "Basketball", details: "Focus on mobility and light skills." },
-    { date: "2025-07-12", am: "Run: Long Run", pm: "(Rest)", details: "5 miles @ Easy Pace." },
-    { date: "2025-07-13", am: "Flag Football Game", pm: "(Light Stretching)", details: "Performance Day." },
-    { date: "2025-07-14", am: "Full Body Strength", pm: "Active Recovery", details: "PM: Mobility/Foam Roll." },
-    { date: "2025-07-15", am: "Run: Intervals", pm: "Basketball", details: "Run: 4 mi total (incl. 8x200m hard w/ 200m jog)." },
-    { date: "2025-07-16", am: "Lower Body Strength", pm: "(Rest)", details: "Focus on squats/deadlifts." },
-    { date: "2025-07-17", am: "Agile Strength", pm: "Run: Tempo", details: "Run: 4 mi total (incl. 2 mi @ Tempo Pace)." },
-    { date: "2025-07-18", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-07-19", am: "Run: Long Run", pm: "(Rest)", details: "5.5 miles @ Easy Pace." },
-    { date: "2025-07-20", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-07-21", am: "Full Body Strength", pm: "Active Recovery", details: "" },
-    { date: "2025-07-22", am: "Run: Intervals", pm: "Basketball", details: "Run: 4.5 mi total (incl. 4x400m hard w/ 400m jog)." },
-    { date: "2025-07-23", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-07-24", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 4 mi total (incl. 2 mi @ Tempo Pace)." },
-    { date: "2025-07-25", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-07-26", am: "Run: Long Run", pm: "(Rest)", details: "6 miles @ Easy Pace." },
-    { date: "2025-07-27", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-07-28", am: "Full Body Strength", pm: "Active Recovery", details: "Recovery Week: Lighter intensity on all workouts." },
-    { date: "2025-07-29", am: "Run: Intervals", pm: "Basketball", details: "Run: 3 mi total (incl. 4x200m hard)." },
-    { date: "2025-07-30", am: "Lower Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-07-31", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-08-01", am: "Run: Easy", pm: "Basketball", details: "Run: 3 easy miles." },
-    { date: "2025-08-02", am: "Run: Long Run", pm: "(Rest)", details: "5 miles." },
-    { date: "2025-08-03", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-08-04", am: "Full Body Strength", pm: "Active Recovery", details: "" },
-    { date: "2025-08-05", am: "Run: Intervals", pm: "Basketball", details: "Run: 4.5 mi total (incl. 5x400m hard w/ 400m jog)." },
-    { date: "2025-08-06", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-08-07", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 4.5 mi total (incl. 2.5 mi @ Tempo)." },
-    { date: "2025-08-08", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-08-09", am: "Run: Long Run", pm: "(Rest)", details: "6.5 miles @ Easy Pace." },
-    { date: "2025-08-10", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-08-11", am: "Full Body Strength", pm: "Active Recovery", details: "" },
-    { date: "2025-08-12", am: "Run: Intervals", pm: "Basketball", details: "Run: 4.5 mi total (incl. 6x400m hard w/ 400m jog)." },
-    { date: "2025-08-13", am: "Lower Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-08-14", am: "Agile Strength", pm: "Run: Tempo", details: "Run: 4.5 mi total (incl. 2.5 mi @ Tempo)." },
-    { date: "2025-08-15", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-08-16", am: "Run: Long Run", pm: "(Rest)", details: "7 miles @ Easy Pace." },
-    { date: "2025-08-17", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-08-18", am: "Full Body Strength", pm: "Active Recovery", details: "" },
-    { date: "2025-08-19", am: "Run: Intervals", pm: "Basketball", details: "Run: 4 mi total (incl. 6x400m hill repeats)." },
-    { date: "2025-08-20", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-08-21", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 4.5 mi total (incl. 2.5 mi @ Tempo)." },
-    { date: "2025-08-22", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-08-23", am: "Run: Long Run", pm: "(Rest)", details: "7.5 miles @ Easy Pace." },
-    { date: "2025-08-24", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-08-25", am: "Full Body Strength", pm: "Active Recovery", details: "Recovery Week: Lighter intensity on all workouts." },
-    { date: "2025-08-26", am: "Run: Intervals", pm: "Basketball", details: "Run: 3 mi total (incl. 5x200m hard)." },
-    { date: "2025-08-27", am: "Lower Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-08-28", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-08-29", am: "Run: Easy", pm: "Basketball", details: "Run: 3 easy miles." },
-    { date: "2025-08-30", am: "Run: Long Run", pm: "(Rest)", details: "6 miles." },
-    { date: "2025-08-31", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-09-01", am: "Full Body Strength", pm: "Active Recovery", details: "" },
-    { date: "2025-09-02", am: "Run: Intervals", pm: "Basketball", details: "Run: 4 mi total (incl. 8x400m hill repeats)." },
-    { date: "2025-09-03", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-09-04", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 5 mi total (incl. 3 mi @ Tempo)." },
-    { date: "2025-09-05", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-09-06", am: "Run: Long Run", pm: "(Rest)", details: "8 miles @ Easy Pace." },
-    { date: "2025-09-07", am: "Flag Football Game", pm: "(Light Stretching)", details: "" },
-    { date: "2025-09-08", am: "Full Body Strength", pm: "Active Recovery", details: "" },
-    { date: "2025-09-09", am: "Run: Intervals", pm: "Basketball", details: "Run: 3 mi easy (incl. 6x100m strides). Final game prep." },
-    { date: "2025-09-10", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-09-11", am: "Lower Body Strength", pm: "(Rest)", details: "Lighter effort today." },
-    { date: "2025-09-12", am: "Active Recovery", pm: "Basketball", details: "PM session is optional." },
-    { date: "2025-09-13", am: "Run: Long Run", pm: "(Rest)", details: "6 miles @ Easy Pace." },
-    { date: "2025-09-14", am: "Final Game", pm: "(Light Stretching)", details: "End of in-season phase." },
-    { date: "2025-09-15", am: "Full Body Strength", pm: "Active Recovery", details: "Transition week. Lighter weights." },
-    { date: "2025-09-16", am: "Run: Race Pace", pm: "Basketball", details: "Run: 5 mi total (incl. 2x1 mi @ 8:15 Pace)." },
-    { date: "2025-09-17", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-09-18", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 4.5 mi total (incl. 2.5 mi @ Tempo)." },
-    { date: "2025-09-19", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-09-20", am: "Run: Long Run", pm: "(Rest)", details: "8.5 miles @ Easy Pace." },
-    { date: "2025-09-21", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-09-22", am: "Full Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-09-23", am: "Run: Race Pace", pm: "Basketball", details: "Run: 5 mi total (incl. 3x1 mi @ 8:15 Pace)." },
-    { date: "2025-09-24", am: "Lower Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-09-25", am: "Agile Strength", pm: "Run: Tempo", details: "Run: 5 mi total (incl. 3 mi @ Tempo)." },
-    { date: "2025-09-26", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-09-27", am: "Run: Long Run", pm: "(Rest)", details: "9 miles @ Easy Pace." },
-    { date: "2025-09-28", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-09-29", am: "Full Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-09-30", am: "Run: Race Pace", pm: "Basketball", details: "Run: 6 mi total (incl. 4x1 mi @ 8:15 Pace)." },
-    { date: "2025-10-01", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-10-02", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 5 mi total (incl. 3 mi @ Tempo)." },
-    { date: "2025-10-03", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-10-04", am: "Run: Long Run", pm: "(Rest)", details: "10 miles @ Easy Pace. Key workout." },
-    { date: "2025-10-05", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-10-06", am: "Full Body Strength", pm: "(Rest)", details: "10-Miler Taper Week: Lower volume/intensity." },
-    { date: "2025-10-07", am: "Run: Intervals", pm: "Basketball", details: "Run: 3 mi easy (incl. 6x100m strides), leg prep." },
-    { date: "2025-10-08", am: "Lower Body Strength", pm: "(Rest)", details: "Light weight/effort." },
-    { date: "2025-10-09", am: "Agile Strength", pm: "(Rest)", details: "Light effort." },
-    { date: "2025-10-10", am: "Run: Easy", pm: "Basketball", details: "Run: 3 easy miles." },
-    { date: "2025-10-11", am: "Run: Long Run", pm: "(Rest)", details: "6 miles (Taper)." },
-    { date: "2025-10-12", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-10-13", am: "Full Body Strength", pm: "(Rest)", details: "Taper week lifts. Light weight." },
-    { date: "2025-10-14", am: "Run: Shakeout", pm: "Basketball (optional)", details: "Run: 3 mi w/ 4x100m strides." },
-    { date: "2025-10-15", am: "Active Recovery", pm: "(Rest)", details: "Short walk/mobility." },
-    { date: "2025-10-16", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-10-17", am: "Run: Shakeout", pm: "(Rest)", details: "Run: 2 easy miles." },
-    { date: "2025-10-18", am: "Active Recovery", pm: "(Rest)", details: "Prepare for race day." },
-    { date: "2025-10-19", am: "10-MILE RACE", pm: "(Rest)", details: "Race Day!" },
-    { date: "2025-10-20", am: "Active Recovery", pm: "(Rest)", details: "Post-race Recovery Week." },
-    { date: "2025-10-21", am: "Run: Easy", pm: "Basketball (optional)", details: "Run: 3 easy miles." },
-    { date: "2025-10-22", am: "Full Body Strength", pm: "(Rest)", details: "Ease back into lifting." },
-    { date: "2025-10-23", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-10-24", am: "Run: Easy", pm: "Basketball", details: "Run: 3 easy miles." },
-    { date: "2025-10-25", am: "Run: Long Run", pm: "(Rest)", details: "7 miles (Post-race build)." },
-    { date: "2025-10-26", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-10-27", am: "Full Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-10-28", am: "Run: Race Pace", pm: "Basketball", details: "Run: 6 mi total (incl. 2x1.5 mi @ 8:15 Pace)." },
-    { date: "2025-10-29", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-10-30", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 5 mi total (incl. 3 mi @ Tempo)." },
-    { date: "2025-10-31", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-11-01", am: "Run: Long Run", pm: "(Rest)", details: "9 miles @ Easy Pace." },
-    { date: "2025-11-02", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-11-03", am: "Full Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-11-04", am: "Run: Race Pace", pm: "Basketball", details: "Run: 6 mi total (incl. 2x2 mi @ 8:15 Pace)." },
-    { date: "2025-11-05", am: "Lower Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-11-06", am: "Agile Strength", pm: "Run: Tempo", details: "Run: 5 mi total (incl. 3 mi @ Tempo)." },
-    { date: "2025-11-07", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-11-08", am: "Run: Long Run", pm: "(Rest)", details: "10 miles @ Easy Pace." },
-    { date: "2025-11-09", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-11-10", am: "Full Body Strength", pm: "(Rest)", details: "" },
-    { date: "2025-11-11", am: "Run: Race Pace", pm: "Basketball", details: "Run: 6 mi total (incl. 3x1.5 mi @ 8:15 Pace)." },
-    { date: "2025-11-12", am: "Agile Strength", pm: "(Rest)", details: "" },
-    { date: "2025-11-13", am: "Lower Body Strength", pm: "Run: Tempo", details: "Run: 5 mi total (incl. 3 mi @ Tempo)." },
-    { date: "2025-11-14", am: "Active Recovery", pm: "Basketball", details: "" },
-    { date: "2025-11-15", am: "Run: Long Run", pm: "(Rest)", details: "11.5 miles @ Easy Pace. Peak run." },
-    { date: "2025-11-16", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-11-17", am: "Full Body Strength", pm: "(Rest)", details: "Half Marathon Taper Week: Light weight." },
-    { date: "2025-11-18", am: "Run: Shakeout", pm: "Basketball (optional)", details: "Run: 3 mi w/ 4x100m strides." },
-    { date: "2025-11-19", am: "Lower Body Strength", pm: "(Rest)", details: "Taper week lifts." },
-    { date: "2025-11-20", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-11-21", am: "Run: Easy", pm: "(Rest)", details: "Run: 3 easy miles." },
-    { date: "2025-11-22", am: "Run: Long Run", pm: "(Rest)", details: "6 miles (Taper)." },
-    { date: "2025-11-23", am: "Active Recovery", pm: "(Rest)", details: "" },
-    { date: "2025-11-24", am: "Active Recovery", pm: "(Rest)", details: "Short walk, final prep." },
-    { date: "2025-11-25", am: "Run: Shakeout", pm: "(Rest)", details: "Run: 2 easy miles." },
-    { date: "2025-11-26", am: "Active Recovery", pm: "(Rest)", details: "Prepare for race day." },
-    { date: "2025-11-27", am: "HALF MARATHON", pm: "(Rest)", details: "RACE DAY!" }
-];
+let trainingData = [];
 
 document.addEventListener('DOMContentLoaded', function () {
+    const setupContainer = document.getElementById('setup-container');
+    const appContainer = document.getElementById('app-container');
+    const sheetUrlInput = document.getElementById('sheet-url-input');
+    const loadDataBtn = document.getElementById('load-data-btn');
+    const setupErrorEl = document.getElementById('setup-error');
+    const exportPlanBtn = document.getElementById('export-plan-btn');
+    
+    const helpModal = document.getElementById('help-modal');
+    const showHelpBtn = document.getElementById('show-help-btn');
+    const closeHelpModalBtn = document.getElementById('close-help-modal');
+
     const monthYearEl = document.getElementById('month-year');
     const calendarEl = document.getElementById('calendar');
     const prevMonthBtn = document.getElementById('prev-month');
@@ -290,8 +201,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const rescheduleBanner = document.getElementById('reschedule-banner');
     const cancelRescheduleBtn = document.getElementById('cancel-reschedule');
-    const appContainer = document.getElementById('app-container');
-
+    
     const today = new Date("2025-07-08T12:00:00Z");
     today.setHours(0, 0, 0, 0); 
     let currentDate = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -302,8 +212,74 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const race10m = new Date('2025-10-19T00:00:00');
     const raceHM = new Date('2025-11-27T00:00:00');
+
+    async function fetchData(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const csvText = await response.text();
+            parseCSV(csvText);
+            localStorage.setItem('googleSheetUrl', url);
+            setupContainer.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            initializeApp();
+        } catch (error) {
+            setupErrorEl.textContent = 'Failed to load data. Please check the URL and ensure your sheet is published correctly.';
+            setupErrorEl.classList.remove('hidden');
+            console.error('Error fetching sheet data:', error);
+        }
+    }
+
+    function parseCSV(text) {
+        const rows = text.split(/\r?\n/);
+        const headers = rows[0].split(',').map(h => h.trim());
+        const data = [];
+        for (let i = 1; i < rows.length; i++) {
+            if (rows[i].trim() === '') continue;
+            const values = rows[i].split(',');
+            const entry = {};
+            headers.forEach((header, index) => {
+                entry[header] = values[index] ? values[index].trim() : '(Rest)';
+            });
+            data.push(entry);
+        }
+        trainingData = data;
+    }
+    
+    function exportToCSV() {
+        const headers = ['date', 'am', 'pm', 'details'];
+        let csvContent = headers.join(',') + '\r\n';
+
+        trainingData.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        trainingData.forEach(row => {
+            const values = headers.map(header => {
+                let value = row[header] || '';
+                if (value.includes(',')) {
+                    value = `"${value}"`;
+                }
+                return value;
+            });
+            csvContent += values.join(',') + '\r\n';
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "updated_training_plan.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    }
     
     function getWorkoutIcon(session) {
+        if (!session || session === '(Rest)') return '😴';
         if (session.includes('Run')) return '�';
         if (session.includes('Strength')) return '🏋️';
         if (session.includes('Basketball')) return '🏀';
@@ -344,14 +320,10 @@ document.addEventListener('DOMContentLoaded', function () {
             const dateStr = dayDate.toISOString().split('T')[0];
             const workoutData = trainingData.find(d => d.date === dateStr);
             
-            dayEl.className = 'calendar-day border p-2 rounded-lg bg-white flex flex-col justify-between';
+            dayEl.className = 'calendar-day border p-1 rounded-lg bg-white flex flex-col';
             dayEl.dataset.fulldate = dateStr;
+            dayEl.classList.add('cursor-pointer');
 
-            if (dayDate < today) {
-                dayEl.classList.add('bg-gray-100', 'text-gray-400');
-            } else {
-                 dayEl.classList.add('cursor-pointer');
-            }
              if (dayDate.getTime() === today.getTime()) {
                 dayEl.classList.add('border-indigo-500', 'border-2');
             }
@@ -359,30 +331,34 @@ document.addEventListener('DOMContentLoaded', function () {
                 dayEl.classList.add('race-day');
             }
 
-            dayEl.innerHTML = `<div class="font-bold text-sm text-right">${i}</div>`;
+            dayEl.innerHTML = `<div class="day-number font-bold text-sm text-right mb-1">${i}</div>`;
             
-            if (workoutData) {
-                dayEl.dataset.date = dateStr;
-                let sessionHtml = '<div class="text-xs space-y-1 mt-1 overflow-hidden">';
-                if (workoutData.am !== '(Rest)') {
-                    sessionHtml += `<div><span class="font-semibold">${getWorkoutIcon(workoutData.am)} ${workoutData.am}</span></div>`;
-                }
-                if (workoutData.pm !== '(Rest)') {
-                     sessionHtml += `<div><span class="font-semibold">${getWorkoutIcon(workoutData.pm)} ${workoutData.pm}</span></div>`;
-                }
-                sessionHtml += '</div>'
-                dayEl.innerHTML += sessionHtml;
-            }
+            const amSession = workoutData ? workoutData.am : '(Rest)';
+            const pmSession = workoutData ? workoutData.pm : '(Rest)';
+
+            let sessionHtml = `<div class="flex-grow flex flex-col justify-around text-xs space-y-1 overflow-hidden">`;
+
+            sessionHtml += `<div class="session-slot p-1" data-session="am" data-fulldate="${dateStr}">
+                                ${amSession !== '(Rest)' ? `<span>${getWorkoutIcon(amSession)} ${amSession}</span>` : '&nbsp;'}
+                           </div>`;
+            sessionHtml += `<div class="session-slot p-1" data-session="pm" data-fulldate="${dateStr}">
+                                ${pmSession !== '(Rest)' ? `<span>${getWorkoutIcon(pmSession)} ${pmSession}</span>` : '&nbsp;'}
+                           </div>`;
+
+            sessionHtml += '</div>';
+            dayEl.innerHTML += sessionHtml;
             
             calendarEl.appendChild(dayEl);
         }
     }
 
     function showModal(dateStr, isEditing = false) {
-        const workoutData = trainingData.find(d => d.date === dateStr);
-        if (!workoutData) return;
+        let workoutData = trainingData.find(d => d.date === dateStr);
+        if (!workoutData) {
+            workoutData = { date: dateStr, am: '(Rest)', pm: '(Rest)', details: '' };
+        }
 
-        const date = new Date(dateStr + 'T00:00:00');
+        const date = new Date(dateStr + 'T12:00:00');
         modalDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
         
         if (isEditing) {
@@ -412,21 +388,19 @@ document.addEventListener('DOMContentLoaded', function () {
              modalContentEl.innerHTML = `
                 <div id="view-mode-content" data-date="${dateStr}">
                     <div class="border-l-4 border-indigo-500 pl-4 py-2">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <p class="text-sm font-semibold text-gray-500">AM Session</p>
-                                <p class="text-xl font-bold text-gray-900">${workoutData.am}</p>
-                            </div>
+                        <p class="text-sm font-semibold text-gray-500">AM Session</p>
+                        <p class="text-xl font-bold text-gray-900">${workoutData.am}</p>
+                        <div class="flex gap-2 mt-2">
                             <button data-session="am" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-blue-200" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Reschedule</button>
+                            <button data-session="am" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Cancel</button>
                         </div>
                     </div>
                     <div class="border-l-4 border-teal-500 pl-4 py-2 mt-4">
-                         <div class="flex justify-between items-center">
-                            <div>
-                                <p class="text-sm font-semibold text-gray-500">PM Session</p>
-                                <p class="text-xl font-bold text-gray-900">${workoutData.pm}</p>
-                            </div>
+                        <p class="text-sm font-semibold text-gray-500">PM Session</p>
+                        <p class="text-xl font-bold text-gray-900">${workoutData.pm}</p>
+                        <div class="flex gap-2 mt-2">
                             <button data-session="pm" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-blue-200" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Reschedule</button>
+                            <button data-session="pm" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Cancel</button>
                         </div>
                     </div>
                     <div class="bg-gray-100 p-4 rounded-lg mt-4">
@@ -434,13 +408,14 @@ document.addEventListener('DOMContentLoaded', function () {
                         <p class="text-lg text-gray-800">${workoutData.details || "No specific details for this day."}</p>
                     </div>
                     <div class="flex flex-wrap justify-end gap-3 pt-6">
-                        <button id="edit-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Edit Day</button>
-                        <button id="cancel-day-btn" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 transition-colors">Cancel Day</button>
+                        <button id="edit-day-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Edit Day / Add Note</button>
                     </div>
                 </div>
             `;
-            document.getElementById('edit-btn').onclick = () => showModal(dateStr, true);
-            document.getElementById('cancel-day-btn').onclick = () => deleteWorkout(dateStr);
+            document.getElementById('edit-day-btn').onclick = () => showModal(dateStr, true);
+            document.querySelectorAll('.cancel-session-btn').forEach(btn => {
+                btn.onclick = (e) => cancelSession(dateStr, e.target.dataset.session);
+            });
             document.querySelectorAll('.reschedule-session-btn').forEach(btn => {
                 btn.onclick = (e) => initiateReschedule(dateStr, e.target.dataset.session);
             });
@@ -449,22 +424,34 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function saveWorkout(dateStr) {
-        const index = trainingData.findIndex(w => w.date === dateStr);
-        if (index > -1) {
-            trainingData[index].am = document.getElementById('edit-am').value;
-            trainingData[index].pm = document.getElementById('edit-pm').value;
-            trainingData[index].details = document.getElementById('edit-details').value;
+        let index = trainingData.findIndex(w => w.date === dateStr);
+        if (index === -1) {
+             trainingData.push({ date: dateStr, am: '(Rest)', pm: '(Rest)', details: '' });
+             index = trainingData.length - 1;
         }
+
+        trainingData[index].am = document.getElementById('edit-am').value;
+        trainingData[index].pm = document.getElementById('edit-pm').value;
+        trainingData[index].details = document.getElementById('edit-details').value;
+        
+        if (trainingData[index].am === '(Rest)' && trainingData[index].pm === '(Rest)') {
+            trainingData.splice(index, 1);
+        }
+
         refreshApp();
-        showModal(dateStr);
+        modal.classList.add('hidden');
     }
     
-    function deleteWorkout(dateStr) {
-        if (confirm('Are you sure you want to cancel all workouts for this day? This action cannot be undone.')) {
-            trainingData = trainingData.filter(w => w.date !== dateStr);
-            modal.classList.add('hidden');
-            refreshApp();
+    function cancelSession(dateStr, sessionType) {
+        const index = trainingData.findIndex(w => w.date === dateStr);
+        if (index > -1) {
+            trainingData[index][sessionType] = '(Rest)';
+            if (trainingData[index].am === '(Rest)' && trainingData[index].pm === '(Rest)') {
+                trainingData.splice(index, 1);
+            }
         }
+        modal.classList.add('hidden');
+        refreshApp();
     }
     
     function initiateReschedule(dateStr, sessionType) {
@@ -484,35 +471,36 @@ document.addEventListener('DOMContentLoaded', function () {
         appContainer.classList.add('reschedule-mode');
     }
     
-    function completeReschedule(newDateStr) {
+    function completeReschedule(newDateStr, newSessionType) {
         if(!isRescheduling || !workoutToReschedule) return;
 
-        const originalDay = trainingData.find(d => d.date === workoutToReschedule.date);
-        let targetDay = trainingData.find(d => d.date === newDateStr);
+        const originalDayIndex = trainingData.findIndex(d => d.date === workoutToReschedule.date);
+        let targetDayIndex = trainingData.findIndex(d => d.date === newDateStr);
 
-        if (targetDay && targetDay[workoutToReschedule.sessionType] !== '(Rest)') {
-            if (!confirm(`The ${workoutToReschedule.sessionType.toUpperCase()} session on this day is already booked. Overwrite it?`)) {
+        if (targetDayIndex > -1 && trainingData[targetDayIndex][newSessionType] !== '(Rest)') {
+            if (!confirm(`The ${newSessionType.toUpperCase()} session on ${new Date(newDateStr + 'T12:00:00').toLocaleDateString()} is already booked. Overwrite it?`)) {
                 cancelReschedule();
                 return;
             }
         }
 
-        if (originalDay) {
-            originalDay[workoutToReschedule.sessionType] = '(Rest)';
-        }
-
-        if (!targetDay) {
-            targetDay = { date: newDateStr, am: '(Rest)', pm: '(Rest)', details: '' };
-            trainingData.push(targetDay);
-        }
-
-        targetDay[workoutToReschedule.sessionType] = workoutToReschedule.activity;
-        
-        if (workoutToReschedule.details) {
-            const detailNote = `(From ${workoutToReschedule.date})`;
-            if (!targetDay.details.includes(detailNote)) {
-                 targetDay.details = targetDay.details ? `${targetDay.details} | ${detailNote}` : detailNote;
+        if (originalDayIndex > -1) {
+            trainingData[originalDayIndex][workoutToReschedule.sessionType] = '(Rest)';
+            if (trainingData[originalDayIndex].am === '(Rest)' && trainingData[originalDayIndex].pm === '(Rest)') {
+                trainingData.splice(originalDayIndex, 1);
             }
+        }
+
+        if (targetDayIndex === -1) {
+             trainingData.push({ date: newDateStr, am: '(Rest)', pm: '(Rest)', details: '' });
+             targetDayIndex = trainingData.length - 1;
+        }
+
+        trainingData[targetDayIndex][newSessionType] = workoutToReschedule.activity;
+        
+        const detailNote = `(Rescheduled from ${new Date(workoutToReschedule.date  + 'T12:00:00').toLocaleDateString('en-US',{month:'short', day:'numeric'})})`;
+        if (!trainingData[targetDayIndex].details.includes(detailNote)) {
+             trainingData[targetDayIndex].details = trainingData[targetDayIndex].details ? `${trainingData[targetDayIndex].details} | ${detailNote}` : detailNote;
         }
 
         trainingData.sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -529,21 +517,26 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     
     function applyFilter(filter) {
-        const days = document.querySelectorAll('.calendar-day[data-date]');
+        const days = document.querySelectorAll('.calendar-day');
         days.forEach(day => {
-            day.classList.remove('highlight');
-            if(filter === 'all') return;
+            const workout = trainingData.find(w => w.date === day.dataset.fulldate);
+            const amSlot = day.querySelector('[data-session="am"]');
+            const pmSlot = day.querySelector('[data-session="pm"]');
+            
+            if (amSlot) amSlot.classList.remove('highlight');
+            if (pmSlot) pmSlot.classList.remove('highlight');
 
-            const workout = trainingData.find(w => w.date === day.dataset.date);
-            if (workout) {
-                const amMatch = workout.am.toLowerCase().includes(filter.toLowerCase());
-                const pmMatch = workout.pm.toLowerCase().includes(filter.toLowerCase());
-                
-                if (filter.toLowerCase() === 'strength' && (amMatch || pmMatch || workout.am.includes('Agile') || workout.am.includes('Body'))) {
-                     day.classList.add('highlight');
-                } else if(amMatch || pmMatch){
-                    day.classList.add('highlight');
-                }
+            if(workout && filter !== 'all') {
+                 const amMatch = workout.am && workout.am.toLowerCase().includes(filter.toLowerCase());
+                 const pmMatch = workout.pm && workout.pm.toLowerCase().includes(filter.toLowerCase());
+                 
+                 if (filter.toLowerCase() === 'strength') {
+                    if(workout.am.includes('Strength') || workout.am.includes('Body') || workout.am.includes('Agile')) amSlot.classList.add('highlight');
+                    if(workout.pm.includes('Strength') || workout.pm.includes('Body') || workout.pm.includes('Agile')) pmSlot.classList.add('highlight');
+                 } else {
+                    if (amMatch) amSlot.classList.add('highlight');
+                    if (pmMatch) pmSlot.classList.add('highlight');
+                 }
             }
         });
     }
@@ -552,9 +545,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if(progressionChart) {
             progressionChart.destroy();
         }
-        const longRuns = trainingData.filter(d => d.am.includes('Long Run'));
+        const longRuns = trainingData.filter(d => (d.am && d.am.includes('Long Run')) || (d.pm && d.pm.includes('Long Run')));
         const labels = longRuns.map(d => {
-            const date = new Date(d.date + 'T00:00:00');
+            const date = new Date(d.date + 'T12:00:00');
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         });
         const data = longRuns.map(d => {
@@ -625,55 +618,76 @@ document.addEventListener('DOMContentLoaded', function () {
         updateTodaysWorkout();
         createProgressionChart();
     }
-
-    prevMonthBtn.addEventListener('click', () => {
-        currentDate.setMonth(currentDate.getMonth() - 1);
-        renderCalendar();
-    });
-
-    nextMonthBtn.addEventListener('click', () => {
-        currentDate.setMonth(currentDate.getMonth() + 1);
-        renderCalendar();
-    });
     
-    calendarEl.addEventListener('click', (e) => {
-        const dayEl = e.target.closest('.calendar-day');
-        if (!dayEl) return;
-
-        const dateStr = dayEl.dataset.fulldate;
-        if (isRescheduling) {
-            if (new Date(dateStr) < today) {
-                alert("Cannot reschedule to a past date.");
-                return;
-            }
-            completeReschedule(dateStr);
-        } else if (dayEl.dataset.date) {
-            showModal(dayEl.dataset.date);
-        }
-    });
-
-    closeModalBtn.addEventListener('click', () => {
-        modal.classList.add('hidden');
-    });
-
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.classList.add('hidden');
-        }
-    });
-
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            applyFilter(btn.dataset.filter);
+    function initializeApp() {
+        refreshApp();
+        updateCountdowns();
+        addEventListeners();
+    }
+    
+    function addEventListeners() {
+        prevMonthBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            renderCalendar();
         });
-    });
-    
-    cancelRescheduleBtn.addEventListener('click', () => {
-        cancelReschedule();
+
+        nextMonthBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            renderCalendar();
+        });
+        
+        calendarEl.addEventListener('click', (e) => {
+            const sessionSlot = e.target.closest('.session-slot');
+            const dayEl = e.target.closest('.calendar-day');
+
+            if (sessionSlot && isRescheduling) {
+                completeReschedule(sessionSlot.dataset.fulldate, sessionSlot.dataset.session);
+            } else if (dayEl) {
+                showModal(dayEl.dataset.fulldate);
+            }
+        });
+
+        closeModalBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.classList.add('hidden');
+            }
+        });
+
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                applyFilter(btn.dataset.filter);
+            });
+        });
+        
+        cancelRescheduleBtn.addEventListener('click', () => {
+            cancelReschedule();
+        });
+        
+        showHelpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
+        closeHelpModalBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
+        exportPlanBtn.addEventListener('click', exportToCSV);
+    }
+
+    loadDataBtn.addEventListener('click', () => {
+        const url = sheetUrlInput.value.trim();
+        if (url) {
+            setupErrorEl.classList.add('hidden');
+            fetchData(url);
+        } else {
+            setupErrorEl.textContent = 'Please enter a valid URL.';
+            setupErrorEl.classList.remove('hidden');
+        }
     });
 
-    refreshApp();
-    updateCountdowns();
+    const savedUrl = localStorage.getItem('googleSheetUrl');
+    if (savedUrl) {
+        sheetUrlInput.value = savedUrl;
+        fetchData(savedUrl);
+    }
 });
 </script>
 </body>
