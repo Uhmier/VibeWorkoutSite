@@ -9,6 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Neutral Grays with Indigo/Blue accents -->
+    <!-- Application Structure Plan: A dashboard-centric SPA with a dynamic, vertically-scrollable, bi-weekly calendar as the primary view. This structure is optimized for mobile consumption. Key interactions include week navigation and a modal for daily details. CRUD operations are supported directly from the UI. Data is managed in local storage after an initial fetch from a user-provided public Google Sheet URL, or generated via Gemini API. -->
+    <!-- Visualization & Content Choices: Calendar (HTML/JS) -> Organize/Interact. Icons (Unicode) -> Inform. Modal (HTML/JS) -> Inform/Update. The grid calendar is replaced by a flexbox-based vertical list for better mobile UX. Gemini API integration adds plan generation and modification capabilities. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -20,20 +24,20 @@
             cursor: pointer;
         }
         .calendar-row:hover {
-            background-color: #eef2ff; /* indigo-50 */
+            background-color: #eef2ff;
         }
         .session-cell {
             transition: background-color 0.2s ease-in-out;
-            min-height: 70px; /* Ensure cells have a minimum height */
+            min-height: 70px;
         }
         .reschedule-mode .session-cell:hover {
-            background-color: #dcfce7; /* green-100 */
-            border-color: #22c55e; /* green-500 */
+            background-color: #dcfce7;
+            border-color: #22c55e;
         }
         .today-row {
-            background-color: #e0e7ff; /* indigo-200 */
+            background-color: #e0e7ff;
             border-left-width: 4px;
-            border-color: #4f46e5; /* indigo-600 */
+            border-color: #4f46e5;
         }
         button:disabled {
             opacity: 0.5;
@@ -42,26 +46,87 @@
         .custom-modal-backdrop {
              background-color: rgba(0, 0, 0, 0.6);
         }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #4f46e5;
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="text-gray-800">
 
     <div id="setup-container" class="fixed inset-0 bg-gray-800 bg-opacity-75 z-[100] flex justify-center items-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl w-full text-center">
-            <h2 class="text-3xl font-bold text-gray-900 mb-4">Welcome! Let's Connect Your Data.</h2>
-            <p class="text-gray-600 mb-6">
-                This dashboard reads your training plan from a public Google Sheet. Please paste the public URL to your sheet's CSV file below.
-                <button id="show-help-btn" class="text-indigo-600 font-semibold underline text-sm ml-1">(How do I do this?)</button>
-            </p>
-            <div class="flex flex-col sm:flex-row gap-2">
-                <input type="url" id="sheet-url-input" placeholder="Paste your Google Sheet CSV URL here" class="flex-grow block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3">
-                <button id="load-data-btn" class="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Load Plan</button>
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-4xl w-full text-center">
+            <h2 class="text-3xl font-bold text-gray-900 mb-2">Welcome! How would you like to start?</h2>
+            <p class="text-gray-600 mb-8">Choose an option to begin your training plan.</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <button id="setup-generate-btn" class="setup-option-btn group bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300 rounded-lg p-6 text-center transition-all">
+                    <span class="text-4xl">✨</span>
+                    <h3 class="text-lg font-semibold mt-4 text-gray-800 group-hover:text-indigo-600">Generate with AI</h3>
+                    <p class="text-sm text-gray-500 mt-1">Describe your goals and let Gemini create a plan for you.</p>
+                </button>
+                <button id="setup-blank-btn" class="setup-option-btn group bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300 rounded-lg p-6 text-center transition-all">
+                    <span class="text-4xl">📄</span>
+                    <h3 class="text-lg font-semibold mt-4 text-gray-800 group-hover:text-indigo-600">Start with Blank Plan</h3>
+                    <p class="text-sm text-gray-500 mt-1">Begin with an empty calendar and add workouts manually.</p>
+                </button>
+                <button id="setup-import-btn" class="setup-option-btn group bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300 rounded-lg p-6 text-center transition-all">
+                    <span class="text-4xl">🔗</span>
+                    <h3 class="text-lg font-semibold mt-4 text-gray-800 group-hover:text-indigo-600">Import from Google Sheet</h3>
+                    <p class="text-sm text-gray-500 mt-1">Load a plan from a public Google Sheet URL.</p>
+                </button>
             </div>
-             <p id="setup-error" class="text-red-500 mt-4 text-sm hidden"></p>
         </div>
     </div>
     
-    <div id="help-modal" class="fixed inset-0 custom-modal-backdrop z-[101] hidden flex justify-center items-center p-4">
+    <div id="gemini-generate-modal" class="fixed inset-0 custom-modal-backdrop z-[101] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8 relative">
+             <button id="close-gemini-generate-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-gray-900">Generate Your Plan with AI</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="gemini-prompt" class="block text-sm font-medium text-gray-700">Describe your training goals:</label>
+                    <textarea id="gemini-prompt" rows="6" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Example: I'm a beginner training for a half marathon in 16 weeks. I can train 4 days a week. I want to include 2 days of strength training. My goal is to finish, not a specific time."></textarea>
+                </div>
+                <div>
+                    <label for="gemini-key-generate" class="block text-sm font-medium text-gray-700">Your Gemini API Key:</label>
+                    <input type="password" id="gemini-key-generate" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Enter your key here">
+                </div>
+                <div class="flex justify-end items-center gap-4">
+                     <p id="gemini-generate-error" class="text-red-500 text-sm hidden flex-grow text-left"></p>
+                    <button id="submit-gemini-generate" class="bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2">
+                        <span id="generate-btn-text">Generate Plan</span>
+                        <div id="generate-spinner" class="spinner hidden" style="width: 20px; height: 20px; border-width: 2px;"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="import-sheet-modal" class="fixed inset-0 custom-modal-backdrop z-[101] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8 relative">
+             <button id="close-import-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-gray-900">Import from Google Sheet</h3>
+            <p class="text-gray-600 mb-6">
+                Paste the public URL to your sheet's CSV file below.
+                <button id="show-help-btn" class="text-indigo-600 font-semibold underline text-sm ml-1">(How?)</button>
+            </p>
+             <div class="flex flex-col sm:flex-row gap-2">
+                <input type="url" id="sheet-url-input" placeholder="Paste your Google Sheet CSV URL here" class="flex-grow block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-3">
+                <button id="load-data-btn" class="bg-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Load Plan</button>
+            </div>
+            <p id="setup-error" class="text-red-500 mt-4 text-sm hidden"></p>
+        </div>
+    </div>
+
+    <div id="help-modal" class="fixed inset-0 custom-modal-backdrop z-[102] hidden flex justify-center items-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-8 relative">
             <button id="close-help-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
             <h3 class="text-2xl font-bold mb-4 text-gray-900">How to Get Your Google Sheet URL</h3>
@@ -70,7 +135,7 @@
                 <p><strong>Step 2: Publish to the Web</strong><br>In Google Sheets, go to <code>File</code> > <code>Share</code> > <code>Publish to web</code>.</p>
                 <p><strong>Step 3: Select CSV Format</strong><br>In the "Link" tab, make sure your training sheet is selected. Then, in the dropdown that says "Web page", change it to <code>Comma-separated values (.csv)</code>.</p>
                 <p><strong>Step 4: Publish and Copy URL</strong><br>Click the green "Publish" button and confirm. A URL will be generated. Copy this entire URL.</p>
-                <p><strong>Step 5: Paste in Dashboard</strong><br>Paste the copied URL into the input box on the dashboard and click "Load Plan". The app will remember your URL for next time.</p>
+                <p><strong>Step 5: Paste in Dashboard</strong><br>Paste the copied URL into the input box on the dashboard and click "Load Plan".</p>
             </div>
         </div>
     </div>
@@ -109,9 +174,11 @@
         </div>
 
         <div class="bg-white p-4 sm:p-6 md:p-8 rounded-2xl shadow-lg mb-8">
-            <div id="controls" class="flex justify-center sm:justify-between items-center mb-4 gap-4">
+            <div id="controls" class="flex justify-center sm:justify-between items-center mb-4 gap-4 flex-wrap">
                  <h2 id="view-title" class="text-xl md:text-2xl font-bold text-gray-800">This Week's Plan</h2>
                 <div class="flex items-center space-x-2 sm:space-x-4">
+                    <button id="gemini-generate-new-btn" class="bg-green-100 text-green-800 px-4 py-2 rounded-lg font-semibold hidden flex items-center gap-2">✨ Generate New Plan</button>
+                    <button id="gemini-update-btn" class="bg-purple-100 text-purple-800 px-4 py-2 rounded-lg font-semibold hidden flex items-center gap-2">💎 Modify Week</button>
                     <button id="prev-week" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold p-2 rounded-full transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
                     </button>
@@ -124,9 +191,12 @@
         </div>
 
         <footer class="text-center p-4 border-t border-gray-200">
-             <div class="flex justify-center">
+             <div class="flex justify-center flex-wrap gap-4">
                 <button id="settings-btn" class="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-800 transition-colors">
                     ⚙️ Data Source Settings
+                </button>
+                 <button id="gemini-settings-btn" class="bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-800 transition-colors">
+                    💎 Gemini Settings
                 </button>
             </div>
         </footer>
@@ -160,15 +230,72 @@
             <button id="close-settings-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
             <h3 class="text-2xl font-bold mb-6 text-gray-900">Data Settings</h3>
             <div class="space-y-4">
-                <button id="export-plan-btn" class="w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-600 transition-colors text-left flex items-center gap-3">
-                    📤 <span class="flex-grow">Export Current Data to CSV</span>
-                </button>
-                <button id="force-reload-btn" class="w-full bg-gray-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors text-left flex items-center gap-3">
-                    🔄 <span class="flex-grow">Reload from Current Source</span>
-                </button>
-                <button id="change-source-btn" class="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-600 transition-colors text-left flex items-center gap-3">
-                    🗑️ <span class="flex-grow">Change Data Source (Reset App)</span>
-                </button>
+                <div>
+                    <label for="csv-upload-input" class="block text-sm font-medium text-gray-700 mb-2">Upload Plan from CSV File</label>
+                    <div class="flex gap-2">
+                        <input type="file" id="csv-upload-input" accept=".csv" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"/>
+                        <button id="load-csv-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors" disabled>Load</button>
+                    </div>
+                </div>
+                 <div class="border-t border-gray-200 pt-4">
+                    <button id="export-plan-btn" class="w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-600 transition-colors text-left flex items-center gap-3">
+                        📤 <span class="flex-grow">Export Current Data to CSV</span>
+                    </button>
+                </div>
+                 <div class="border-t border-gray-200 pt-4">
+                    <button id="force-reload-btn" class="w-full bg-gray-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors text-left flex items-center gap-3">
+                        🔄 <span class="flex-grow">Reload from Google Sheet</span>
+                    </button>
+                </div>
+                <div class="border-t border-gray-200 pt-4">
+                    <button id="reset-app-btn" class="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-600 transition-colors text-left flex items-center gap-3">
+                        🗑️ <span class="flex-grow">Reset App (Start Over)</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="gemini-settings-modal" class="fixed inset-0 custom-modal-backdrop z-[101] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative">
+            <button id="close-gemini-settings-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
+            <h3 class="text-2xl font-bold mb-6 text-gray-900">Gemini AI Settings</h3>
+            <div class="space-y-4">
+                 <div>
+                    <label for="gemini-api-key" class="block text-sm font-medium text-gray-700">Your Gemini API Key</label>
+                    <input type="password" id="gemini-api-key" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Enter your key here">
+                </div>
+                <div class="flex items-center justify-between">
+                    <label for="enable-gemini-toggle" class="font-medium text-gray-700">Enable Gemini Features</label>
+                    <button type="button" id="enable-gemini-toggle" class="bg-gray-200 relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2" role="switch" aria-checked="false" disabled>
+                        <span class="sr-only">Enable Gemini Features</span>
+                        <span id="gemini-toggle-handle" class="translate-x-0 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                    </button>
+                </div>
+                 <p id="api-key-error" class="text-red-500 text-xs mt-1 hidden">An API key is required to enable Gemini features.</p>
+                <div class="flex justify-end pt-2">
+                    <button id="save-gemini-settings-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Save Settings</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="gemini-update-modal" class="fixed inset-0 custom-modal-backdrop z-[102] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 relative">
+             <button id="close-gemini-update-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
+            <h3 class="text-2xl font-bold mb-4 text-gray-900">Modify Week with AI</h3>
+            <div class="space-y-4">
+                <div>
+                    <label for="gemini-update-prompt" class="block text-sm font-medium text-gray-700">How would you like to change the plan for this week?</label>
+                    <textarea id="gemini-update-prompt" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="Example: Make this week a deload week. or Swap my Wednesday and Thursday workouts."></textarea>
+                </div>
+                <div class="flex justify-end items-center gap-4">
+                     <p id="gemini-update-error" class="text-red-500 text-sm hidden flex-grow text-left"></p>
+                    <button id="submit-gemini-update" class="bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2">
+                         <span id="update-btn-text">Update Plan</span>
+                        <div id="update-spinner" class="spinner hidden" style="width: 20px; height: 20px; border-width: 2px;"></div>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -176,21 +303,52 @@
 <script>
 let trainingData = [];
 let countdownInterval = null;
+let geminiSettings = { enabled: false, apiKey: '' };
 
 document.addEventListener('DOMContentLoaded', function () {
     const setupContainer = document.getElementById('setup-container');
     const appContainer = document.getElementById('app-container');
-    const sheetUrlInput = document.getElementById('sheet-url-input');
-    const loadDataBtn = document.getElementById('load-data-btn');
-    const setupErrorEl = document.getElementById('setup-error');
     
     const settingsBtn = document.getElementById('settings-btn');
     const settingsModal = document.getElementById('settings-modal');
     const closeSettingsModalBtn = document.getElementById('close-settings-modal');
     const exportPlanBtn = document.getElementById('export-plan-btn');
     const forceReloadBtn = document.getElementById('force-reload-btn');
-    const changeSourceBtn = document.getElementById('change-source-btn');
+    const resetAppBtn = document.getElementById('reset-app-btn');
+    const csvUploadInput = document.getElementById('csv-upload-input');
+    const loadCsvBtn = document.getElementById('load-csv-btn');
+
+    const geminiSettingsBtn = document.getElementById('gemini-settings-btn');
+    const geminiSettingsModal = document.getElementById('gemini-settings-modal');
+    const closeGeminiSettingsModalBtn = document.getElementById('close-gemini-settings-modal');
+    const enableGeminiToggle = document.getElementById('enable-gemini-toggle');
+    const geminiToggleHandle = document.getElementById('gemini-toggle-handle');
+    const geminiApiKeyInput = document.getElementById('gemini-api-key');
+    const saveGeminiSettingsBtn = document.getElementById('save-gemini-settings-btn');
+    const apiKeyError = document.getElementById('api-key-error');
     
+    const geminiGenerateModal = document.getElementById('gemini-generate-modal');
+    const closeGeminiGenerateModalBtn = document.getElementById('close-gemini-generate-modal');
+    const geminiPromptInput = document.getElementById('gemini-prompt');
+    const geminiKeyGenerateInput = document.getElementById('gemini-key-generate');
+    const submitGeminiGenerateBtn = document.getElementById('submit-gemini-generate');
+    const geminiGenerateErrorEl = document.getElementById('gemini-generate-error');
+    
+    const geminiUpdateModal = document.getElementById('gemini-update-modal');
+    const closeGeminiUpdateModalBtn = document.getElementById('close-gemini-update-modal');
+    const geminiUpdatePromptInput = document.getElementById('gemini-update-prompt');
+    const submitGeminiUpdateBtn = document.getElementById('submit-gemini-update');
+    const geminiUpdateErrorEl = document.getElementById('gemini-update-error');
+    const geminiUpdateBtn = document.getElementById('gemini-update-btn');
+    const geminiGenerateNewBtn = document.getElementById('gemini-generate-new-btn');
+
+
+    const importSheetModal = document.getElementById('import-sheet-modal');
+    const closeImportModalBtn = document.getElementById('close-import-modal');
+    const sheetUrlInput = document.getElementById('sheet-url-input');
+    const loadDataBtn = document.getElementById('load-data-btn');
+    const setupErrorEl = document.getElementById('setup-error');
+
     const helpModal = document.getElementById('help-modal');
     const showHelpBtn = document.getElementById('show-help-btn');
     const closeHelpModalBtn = document.getElementById('close-help-modal');
@@ -211,7 +369,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const overwriteBtn = document.getElementById('overwrite-btn');
     const cancelSwapBtn = document.getElementById('cancel-swap-btn');
 
-
     const rescheduleBanner = document.getElementById('reschedule-banner');
     const cancelRescheduleBtn = document.getElementById('cancel-reschedule');
     
@@ -219,9 +376,8 @@ document.addEventListener('DOMContentLoaded', function () {
     today.setHours(0, 0, 0, 0); 
     
     let currentStartDate = new Date(today);
-    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const dayOfWeek = today.getDay(); 
     currentStartDate.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-
 
     let isRescheduling = false;
     let workoutToReschedule = null; 
@@ -241,23 +397,65 @@ document.addEventListener('DOMContentLoaded', function () {
         localStorage.setItem('savedTrainingData', JSON.stringify(trainingData));
     }
 
+    function saveGeminiSettings() {
+        const apiKey = geminiApiKeyInput.value.trim();
+        const isEnabled = enableGeminiToggle.getAttribute('aria-checked') === 'true';
+
+        if (isEnabled && !apiKey) {
+            apiKeyError.classList.remove('hidden');
+            return;
+        }
+        
+        apiKeyError.classList.add('hidden');
+        geminiSettings.apiKey = apiKey;
+        geminiSettings.enabled = isEnabled;
+        localStorage.setItem('geminiSettings', JSON.stringify(geminiSettings));
+        geminiSettingsModal.classList.add('hidden');
+        updateGeminiFeatureVisibility();
+    }
+    
+    function loadGeminiSettings() {
+        const savedSettings = localStorage.getItem('geminiSettings');
+        if (savedSettings) {
+            geminiSettings = JSON.parse(savedSettings);
+        }
+        geminiApiKeyInput.value = geminiSettings.apiKey || '';
+        
+        const keyIsPresent = !!geminiApiKeyInput.value.trim();
+        enableGeminiToggle.disabled = !keyIsPresent;
+
+        const isEnabled = geminiSettings.enabled && keyIsPresent;
+        enableGeminiToggle.setAttribute('aria-checked', isEnabled);
+
+        if (isEnabled) {
+            enableGeminiToggle.classList.replace('bg-gray-200', 'bg-indigo-600');
+            geminiToggleHandle.classList.replace('translate-x-0', 'translate-x-5');
+        } else {
+             enableGeminiToggle.classList.replace('bg-indigo-600', 'bg-gray-200');
+            geminiToggleHandle.classList.replace('translate-x-5', 'translate-x-0');
+        }
+        updateGeminiFeatureVisibility();
+    }
+    
+    function updateGeminiFeatureVisibility() {
+        const showAIButton = geminiSettings.enabled && geminiSettings.apiKey;
+        geminiUpdateBtn.classList.toggle('hidden', !showAIButton);
+        geminiGenerateNewBtn.classList.toggle('hidden', !showAIButton);
+    }
+
     async function fetchData(url) {
         try {
             const response = await fetch(url);
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const csvText = await response.text();
             parseCSV(csvText);
             saveDataToLocal();
             localStorage.setItem('googleSheetUrl', url);
-            setupContainer.classList.add('hidden');
-            appContainer.classList.remove('hidden');
+            importSheetModal.classList.add('hidden');
             initializeApp();
         } catch (error) {
             setupErrorEl.textContent = 'Failed to load data. Please check the URL and ensure your sheet is published correctly.';
             setupErrorEl.classList.remove('hidden');
-            console.error('Error fetching sheet data:', error);
         }
     }
 
@@ -291,27 +489,25 @@ document.addEventListener('DOMContentLoaded', function () {
     function exportToCSV() {
         const headers = ['date', 'am', 'am_details', 'pm', 'pm_details'];
         let csvContent = headers.join(',') + '\r\n';
-
         trainingData.sort((a, b) => new Date(a.date) - new Date(b.date));
-
         trainingData.forEach(row => {
             const values = headers.map(header => {
                 let value = row[header] || '';
-                if (value.includes(',')) {
-                    value = `"${value.replace(/"/g, '""')}"`;
-                }
+                if (value.includes(',')) value = `"${value.replace(/"/g, '""')}"`;
                 return value;
             });
             csvContent += values.join(',') + '\r\n';
         });
+        downloadCSVString(csvContent, "updated_training_plan.csv");
+    }
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    function downloadCSVString(csvString, filename) {
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement("a");
         if (link.download !== undefined) {
             const url = URL.createObjectURL(blob);
             link.setAttribute("href", url);
-            link.setAttribute("download", "updated_training_plan.csv");
-            link.style.visibility = 'hidden';
+            link.setAttribute("download", filename);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -331,7 +527,15 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderCalendar() {
         calendarEl.innerHTML = '';
         const weekStartFormatted = currentStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        viewTitleEl.textContent = `Plan for Week of ${weekStartFormatted}`;
+        const endOfWeek = new Date(currentStartDate);
+        endOfWeek.setDate(endOfWeek.getDate() + 6);
+        
+        let isCurrentWeek = false;
+        if(today >= currentStartDate && today <= endOfWeek){
+            isCurrentWeek = true;
+        }
+
+        viewTitleEl.textContent = isCurrentWeek ? "This Week's Plan" : `Plan for Week of ${weekStartFormatted}`;
         
         for (let i = 0; i < 7; i++) {
             const dayDate = new Date(currentStartDate);
@@ -365,29 +569,28 @@ document.addEventListener('DOMContentLoaded', function () {
             const pmDetails = workoutData ? workoutData.pm_details : '';
 
             const amCell = document.createElement('div');
-            amCell.className = 'session-cell am-cell flex-1 bg-white p-2 border border-gray-200 rounded-tr-lg md:rounded-r-lg flex items-start';
-            amCell.dataset.session = 'am';
-            amCell.dataset.fulldate = dateStr;
-            amCell.innerHTML = `
-                <div class="w-8 text-center font-bold text-indigo-500 pt-1">AM</div>
-                <div class="flex-grow pl-2 border-l border-gray-200">
-                    <p class="font-semibold text-sm whitespace-normal break-words">${getWorkoutIcon(amSession)} ${amSession}</p>
-                    <p class="text-xs text-gray-500 whitespace-normal break-words">${amDetails}</p>
-                </div>
-            `;
-            
-            const pmCell = document.createElement('div');
-            pmCell.className = 'session-cell pm-cell flex-1 bg-white p-2 border border-gray-200 rounded-br-lg md:rounded-r-lg flex items-start';
-            pmCell.dataset.session = 'pm';
-            pmCell.dataset.fulldate = dateStr;
-            pmCell.innerHTML = `
-                <div class="w-8 text-center font-bold text-teal-500 pt-1">PM</div>
-                <div class="flex-grow pl-2 border-l border-gray-200">
-                    <p class="font-semibold text-sm whitespace-normal break-words">${getWorkoutIcon(pmSession)} ${pmSession}</p>
-                    <p class="text-xs text-gray-500 whitespace-normal break-words">${pmDetails}</p>
-                </div>
-            `;
+amCell.className = 'session-cell am-cell flex-1 bg-white p-2 border border-gray-200 rounded-tr-lg md:rounded-r-lg flex items-start';
+amCell.dataset.session = 'am';
+amCell.dataset.fulldate = dateStr;
+amCell.innerHTML = `
+    <div class="w-8 text-center font-bold text-indigo-500 pt-1">AM</div>
+    <div class="flex-grow pl-2 border-l border-gray-200">
+        <p class="font-semibold text-sm whitespace-normal break-words">${getWorkoutIcon(amSession)} ${amSession}</p>
+        <p class="text-xs text-gray-500 whitespace-normal break-words">${amDetails}</p>
+    </div>
+`;
 
+const pmCell = document.createElement('div');
+pmCell.className = 'session-cell pm-cell flex-1 bg-white p-2 border border-gray-200 rounded-br-lg md:rounded-r-lg flex items-start';
+pmCell.dataset.session = 'pm';
+pmCell.dataset.fulldate = dateStr;
+pmCell.innerHTML = `
+    <div class="w-8 text-center font-bold text-teal-500 pt-1">PM</div>
+    <div class="flex-grow pl-2 border-l border-gray-200">
+        <p class="font-semibold text-sm whitespace-normal break-words">${getWorkoutIcon(pmSession)} ${pmSession}</p>
+        <p class="text-xs text-gray-500 whitespace-normal break-words">${pmDetails}</p>
+    </div>
+`;
             workoutContainer.appendChild(amCell);
             workoutContainer.appendChild(pmCell);
             dayRow.appendChild(workoutContainer);
@@ -403,7 +606,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-
     function showModal(dateStr, isAdding = false) {
         const date = new Date(dateStr + 'T12:00:00');
         modalDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -417,123 +619,62 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function showWorkoutDetails(dateStr, isEditing = false) {
-        let workoutData = trainingData.find(d => d.date === dateStr) || 
-                          { date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
+        let workoutData = trainingData.find(d => d.date === dateStr) || { date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
         
         if (isEditing) {
             modalContentEl.innerHTML = `
                 <div class="space-y-4" data-date="${dateStr}">
-                    <div>
-                        <label for="edit-am" class="block text-sm font-medium text-gray-700">AM Session</label>
-                        <input type="text" id="edit-am" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value="${workoutData.am}">
-                    </div>
-                     <div>
-                        <label for="edit-am-details" class="block text-sm font-medium text-gray-700">AM Details</label>
-                        <textarea id="edit-am-details" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">${workoutData.am_details || ""}</textarea>
-                    </div>
-                    <div>
-                        <label for="edit-pm" class="block text-sm font-medium text-gray-700">PM Session</label>
-                        <input type="text" id="edit-pm" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value="${workoutData.pm}">
-                    </div>
-                     <div>
-                        <label for="edit-pm-details" class="block text-sm font-medium text-gray-700">PM Details</label>
-                        <textarea id="edit-pm-details" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">${workoutData.pm_details || ""}</textarea>
-                    </div>
-                    <div class="flex justify-end space-x-3 pt-4">
-                        <button id="cancel-edit-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Cancel</button>
-                        <button id="save-changes-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors">Save Changes</button>
-                    </div>
-                </div>
-            `;
+                    <div><label for="edit-am" class="block text-sm font-medium text-gray-700">AM Session</label><input type="text" id="edit-am" class="mt-1 block w-full rounded-md" value="${workoutData.am}"></div>
+                    <div><label for="edit-am-details" class="block text-sm font-medium text-gray-700">AM Details</label><textarea id="edit-am-details" rows="2" class="mt-1 block w-full rounded-md">${workoutData.am_details || ""}</textarea></div>
+                    <div><label for="edit-pm" class="block text-sm font-medium text-gray-700">PM Session</label><input type="text" id="edit-pm" class="mt-1 block w-full rounded-md" value="${workoutData.pm}"></div>
+                    <div><label for="edit-pm-details" class="block text-sm font-medium text-gray-700">PM Details</label><textarea id="edit-pm-details" rows="2" class="mt-1 block w-full rounded-md">${workoutData.pm_details || ""}</textarea></div>
+                    <div class="flex justify-end space-x-3 pt-4"><button id="cancel-edit-btn" class="bg-gray-200 px-4 py-2 rounded-lg">Cancel</button><button id="save-changes-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Save Changes</button></div>
+                </div>`;
             document.getElementById('save-changes-btn').onclick = () => saveWorkout(dateStr);
             document.getElementById('cancel-edit-btn').onclick = () => showWorkoutDetails(dateStr);
         } else {
              modalContentEl.innerHTML = `
                 <div id="view-mode-content" data-date="${dateStr}">
                     <div class="border-l-4 border-indigo-500 pl-4 py-2 bg-gray-50 rounded-r-lg">
-                        <p class="text-sm font-semibold text-gray-500">AM Session</p>
-                        <p class="text-xl font-bold text-gray-900">${workoutData.am}</p>
-                        <p class="text-sm text-gray-600 mt-1">${workoutData.am_details || ""}</p>
-                        <div class="flex gap-2 mt-2">
-                            <button data-session="am" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-blue-200" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Reschedule</button>
-                            <button data-session="am" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Cancel</button>
-                        </div>
+                        <p class="text-sm font-semibold text-gray-500">AM Session</p><p class="text-xl font-bold text-gray-900">${workoutData.am}</p><p class="text-sm text-gray-600 mt-1">${workoutData.am_details || ""}</p>
+                        <div class="flex gap-2 mt-2"><button data-session="am" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Reschedule</button><button data-session="am" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Cancel</button></div>
                     </div>
                     <div class="border-l-4 border-teal-500 pl-4 py-2 mt-4 bg-gray-50 rounded-r-lg">
-                        <p class="text-sm font-semibold text-gray-500">PM Session</p>
-                        <p class="text-xl font-bold text-gray-900">${workoutData.pm}</p>
-                         <p class="text-sm text-gray-600 mt-1">${workoutData.pm_details || ""}</p>
-                        <div class="flex gap-2 mt-2">
-                            <button data-session="pm" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-blue-200" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Reschedule</button>
-                            <button data-session="pm" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Cancel</button>
-                        </div>
+                        <p class="text-sm font-semibold text-gray-500">PM Session</p><p class="text-xl font-bold text-gray-900">${workoutData.pm}</p><p class="text-sm text-gray-600 mt-1">${workoutData.pm_details || ""}</p>
+                        <div class="flex gap-2 mt-2"><button data-session="pm" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Reschedule</button><button data-session="pm" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Cancel</button></div>
                     </div>
                     <div class="flex flex-wrap justify-end gap-3 pt-6">
-                        <button id="add-workout-btn" class="bg-green-100 text-green-800 px-4 py-2 rounded-lg font-semibold hover:bg-green-200 transition-colors">Add Workout</button>
-                        <button id="edit-day-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Edit Day / Add Notes</button>
+                        <button id="add-workout-btn" class="bg-green-100 text-green-800 px-4 py-2 rounded-lg font-semibold">Add Workout</button>
+                        <button id="edit-day-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold">Edit Day</button>
                     </div>
-                </div>
-            `;
+                </div>`;
             document.getElementById('edit-day-btn').onclick = () => showWorkoutDetails(dateStr, true);
             document.getElementById('add-workout-btn').onclick = () => showAddWorkoutForm(dateStr);
-            document.querySelectorAll('.cancel-session-btn').forEach(btn => {
-                btn.onclick = (e) => cancelSession(dateStr, e.target.dataset.session);
-            });
-            document.querySelectorAll('.reschedule-session-btn').forEach(btn => {
-                btn.onclick = (e) => initiateReschedule(dateStr, e.target.dataset.session);
-            });
+            document.querySelectorAll('.cancel-session-btn').forEach(btn => { btn.onclick = (e) => cancelSession(dateStr, e.target.dataset.session); });
+            document.querySelectorAll('.reschedule-session-btn').forEach(btn => { btn.onclick = (e) => initiateReschedule(dateStr, e.target.dataset.session); });
         }
     }
 
     function showAddWorkoutForm(dateStr) {
         modalContentEl.innerHTML = `
             <div class="space-y-4" data-date="${dateStr}">
-                <div>
-                    <label for="workout-type" class="block text-sm font-medium text-gray-700">Workout Type</label>
-                    <select id="workout-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        <option>Run</option>
-                        <option>Strength</option>
-                        <option>Basketball</option>
-                        <option>Agility Training</option>
-                    </select>
-                </div>
-                <div id="run-type-container" class="hidden">
-                    <label for="run-type" class="block text-sm font-medium text-gray-700">Run Type</label>
-                    <select id="run-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        <option>Easy</option>
-                        <option>Interval</option>
-                        <option>Long</option>
-                        <option>Tempo</option>
-                    </select>
-                </div>
-                 <div>
-                    <label for="time-slot" class="block text-sm font-medium text-gray-700">Time Slot</label>
-                    <select id="time-slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
-                        <option value="am">AM</option>
-                        <option value="pm">PM</option>
-                    </select>
-                </div>
-                 <div>
-                    <label for="new-workout-details" class="block text-sm font-medium text-gray-700">Details / Notes</label>
-                    <textarea id="new-workout-details" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="e.g., 4 miles, 3x5 Bench Press, etc."></textarea>
-                </div>
-                <div class="flex justify-end space-x-3 pt-4">
-                    <button id="cancel-add-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300">Cancel</button>
-                    <button id="save-new-workout-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700">Save Workout</button>
-                </div>
-            </div>
-        `;
-
+                <div><label for="workout-type" class="block text-sm font-medium text-gray-700">Workout Type</label><select id="workout-type" class="mt-1 block w-full rounded-md"><option>Run</option><option>Strength</option><option>Basketball</option><option>Agility Training</option></select></div>
+                <div id="run-type-container" class="hidden"><label for="run-type" class="block text-sm font-medium text-gray-700">Run Type</label><select id="run-type" class="mt-1 block w-full rounded-md"><option>Easy</option><option>Interval</option><option>Long</option><option>Tempo</option></select></div>
+                <div id="strength-type-container" class="hidden"><label for="strength-type" class="block text-sm font-medium text-gray-700">Strength Type</label><select id="strength-type" class="mt-1 block w-full rounded-md"><option>Full Body</option><option>Lower Body</option><option>Agile Strength</option></select></div>
+                <div><label for="time-slot" class="block text-sm font-medium text-gray-700">Time Slot</label><select id="time-slot" class="mt-1 block w-full rounded-md"><option value="am">AM</option><option value="pm">PM</option></select></div>
+                <div><label for="new-workout-details" class="block text-sm font-medium text-gray-700">Details</label><textarea id="new-workout-details" rows="3" class="mt-1 block w-full rounded-md" placeholder="e.g., 4 miles, 3x5 Bench Press, etc."></textarea></div>
+                <div class="flex justify-end space-x-3 pt-4"><button id="cancel-add-btn" class="bg-gray-200 px-4 py-2 rounded-lg">Cancel</button><button id="save-new-workout-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Save</button></div>
+            </div>`;
         const workoutTypeSelect = document.getElementById('workout-type');
         const runTypeContainer = document.getElementById('run-type-container');
-
-        const toggleRunType = () => {
-             runTypeContainer.classList.toggle('hidden', workoutTypeSelect.value !== 'Run');
-             if(workoutTypeSelect.value === 'Run') runTypeContainer.classList.remove('hidden');
-        }
-        toggleRunType();
-        workoutTypeSelect.addEventListener('change', toggleRunType);
-
+        const strengthTypeContainer = document.getElementById('strength-type-container');
+        
+        const toggleSubTypes = () => { 
+            runTypeContainer.classList.toggle('hidden', workoutTypeSelect.value !== 'Run');
+            strengthTypeContainer.classList.toggle('hidden', workoutTypeSelect.value !== 'Strength');
+        };
+        toggleSubTypes();
+        workoutTypeSelect.addEventListener('change', toggleSubTypes);
         document.getElementById('cancel-add-btn').onclick = () => showWorkoutDetails(dateStr);
         document.getElementById('save-new-workout-btn').onclick = () => saveNewWorkout(dateStr);
     }
@@ -541,32 +682,24 @@ document.addEventListener('DOMContentLoaded', function () {
     function saveNewWorkout(dateStr) {
         const workoutType = document.getElementById('workout-type').value;
         const runType = document.getElementById('run-type').value;
+        const strengthType = document.getElementById('strength-type').value;
         const timeSlot = document.getElementById('time-slot').value;
         const details = document.getElementById('new-workout-details').value.trim();
-
-        let workoutName = workoutType;
-        if (workoutType === 'Run') {
-            workoutName = `Run: ${runType}`;
-        } else if (workoutType === 'Strength') {
-            workoutName = 'Strength Training';
-        }
+        
+        let workoutName;
+        if(workoutType === 'Run') workoutName = `Run: ${runType}`;
+        else if(workoutType === 'Strength') workoutName = `${strengthType} Strength`;
+        else workoutName = workoutType;
 
         let dayIndex = trainingData.findIndex(d => d.date === dateStr);
         if (dayIndex === -1) {
             trainingData.push({ date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' });
             dayIndex = trainingData.length - 1;
         }
-
         const existingWorkout = trainingData[dayIndex][timeSlot];
-        if (existingWorkout && existingWorkout !== '(Rest)') {
-            if (!confirm(`This will overwrite the existing workout: "${existingWorkout}". Are you sure?`)) {
-                return;
-            }
-        }
-
+        if (existingWorkout && existingWorkout !== '(Rest)' && !confirm(`This will overwrite "${existingWorkout}". Continue?`)) return;
         trainingData[dayIndex][timeSlot] = workoutName;
         trainingData[dayIndex][`${timeSlot}_details`] = details;
-
         saveDataToLocal();
         refreshApp();
         modal.classList.add('hidden');
@@ -574,27 +707,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function saveWorkout(dateStr) {
         let index = trainingData.findIndex(w => w.date === dateStr);
-        const amVal = document.getElementById('edit-am').value.trim();
-        const amDetailsVal = document.getElementById('edit-am-details').value.trim();
-        const pmVal = document.getElementById('edit-pm').value.trim();
-        const pmDetailsVal = document.getElementById('edit-pm-details').value.trim();
-
         const workoutData = {
             date: dateStr,
-            am: amVal || '(Rest)',
-            am_details: amDetailsVal,
-            pm: pmVal || '(Rest)',
-            pm_details: pmDetailsVal
+            am: document.getElementById('edit-am').value.trim() || '(Rest)', am_details: document.getElementById('edit-am-details').value.trim(),
+            pm: document.getElementById('edit-pm').value.trim() || '(Rest)', pm_details: document.getElementById('edit-pm-details').value.trim()
         };
-
-        if (index === -1) {
-            if (workoutData.am !== '(Rest)' || workoutData.pm !== '(Rest)' || workoutData.am_details || workoutData.pm_details) {
-                trainingData.push(workoutData);
-            }
-        } else {
-            trainingData[index] = workoutData;
-        }
-        
+        if (index === -1) trainingData.push(workoutData);
+        else trainingData[index] = workoutData;
         saveDataToLocal();
         refreshApp();
         modal.classList.add('hidden');
@@ -605,7 +724,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (index > -1) {
             trainingData[index][sessionType] = '(Rest)';
             trainingData[index][`${sessionType}_details`] = '';
-            
             saveDataToLocal();
         }
         modal.classList.add('hidden');
@@ -615,55 +733,28 @@ document.addEventListener('DOMContentLoaded', function () {
     function initiateReschedule(dateStr, sessionType) {
         const workoutData = trainingData.find(d => d.date === dateStr);
         if (!workoutData) return;
-
-        workoutToReschedule = { 
-            date: dateStr, 
-            sessionType: sessionType, 
-            activity: workoutData[sessionType],
-            details: workoutData[`${sessionType}_details`]
-        };
+        workoutToReschedule = { date: dateStr, sessionType: sessionType, activity: workoutData[sessionType], details: workoutData[`${sessionType}_details`] };
         isRescheduling = true;
-        
         modal.classList.add('hidden');
         rescheduleBanner.classList.remove('hidden');
         appContainer.classList.add('reschedule-mode');
     }
     
     function handleReschedule(targetDate, targetSession, action) {
-        const sourceDate = workoutToReschedule.date;
-        const sourceSession = workoutToReschedule.sessionType;
-        const sourceActivity = workoutToReschedule.activity;
-        const sourceDetails = workoutToReschedule.details;
-
-        let sourceDay = trainingData.find(d => d.date === sourceDate);
-        let targetDay = trainingData.find(d => d.date === targetDate);
-
+        const { date: sourceDate, sessionType: sourceSession, activity: sourceActivity, details: sourceDetails } = workoutToReschedule;
+        let sourceDay = trainingData.find(d => d.date === sourceDate), targetDay = trainingData.find(d => d.date === targetDate);
         if (!targetDay) {
             targetDay = { date: targetDate, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
             trainingData.push(targetDay);
         }
-
-        const targetActivity = targetDay[targetSession];
-        const targetDetails = targetDay[`${targetSession}_details`];
-        
+        const targetActivity = targetDay[targetSession], targetDetails = targetDay[`${targetSession}_details`];
         if (action === 'swap') {
-            targetDay[targetSession] = sourceActivity;
-            targetDay[`${targetSession}_details`] = sourceDetails;
-
-            if (sourceDay) {
-                sourceDay[sourceSession] = targetActivity;
-                sourceDay[`${sourceSession}_details`] = targetDetails;
-            }
-        } else { // Overwrite
-            targetDay[targetSession] = sourceActivity;
-            targetDay[`${targetSession}_details`] = sourceDetails;
-
-            if (sourceDay) {
-                sourceDay[sourceSession] = '(Rest)';
-                sourceDay[`${sourceSession}_details`] = '';
-            }
+            targetDay[targetSession] = sourceActivity; targetDay[`${targetSession}_details`] = sourceDetails;
+            if (sourceDay) { sourceDay[sourceSession] = targetActivity; sourceDay[`${sourceSession}_details`] = targetDetails; }
+        } else {
+            targetDay[targetSession] = sourceActivity; targetDay[`${targetSession}_details`] = sourceDetails;
+            if (sourceDay) { sourceDay[sourceSession] = '(Rest)'; sourceDay[`${sourceSession}_details`] = ''; }
         }
-        
         trainingData.sort((a,b) => new Date(a.date) - new Date(b.date));
         saveDataToLocal();
         cancelReschedule();
@@ -672,34 +763,19 @@ document.addEventListener('DOMContentLoaded', function () {
     
     function completeReschedule(newDateStr, newSessionType) {
         if(!isRescheduling || !workoutToReschedule) return;
-
         let targetDay = trainingData.find(d => d.date === newDateStr);
         const targetActivity = targetDay ? targetDay[newSessionType] : '(Rest)';
-        
         if (targetActivity && targetActivity !== '(Rest)') {
-            swapModalText.textContent = `Do you want to swap with "${targetActivity}" or overwrite it?`;
+            swapModalText.textContent = `Swap with "${targetActivity}" or overwrite it?`;
             swapModal.classList.remove('hidden');
-            
-            swapBtn.onclick = () => {
-                swapModal.classList.add('hidden');
-                handleReschedule(newDateStr, newSessionType, 'swap');
-            };
-            overwriteBtn.onclick = () => {
-                swapModal.classList.add('hidden');
-                handleReschedule(newDateStr, newSessionType, 'overwrite');
-            };
-            cancelSwapBtn.onclick = () => {
-                 swapModal.classList.add('hidden');
-                 cancelReschedule();
-            }
-        } else {
-            handleReschedule(newDateStr, newSessionType, 'overwrite');
-        }
+            swapBtn.onclick = () => { swapModal.classList.add('hidden'); handleReschedule(newDateStr, newSessionType, 'swap'); };
+            overwriteBtn.onclick = () => { swapModal.classList.add('hidden'); handleReschedule(newDateStr, newSessionType, 'overwrite'); };
+            cancelSwapBtn.onclick = () => { swapModal.classList.add('hidden'); cancelReschedule(); }
+        } else handleReschedule(newDateStr, newSessionType, 'overwrite');
     }
 
     function cancelReschedule() {
-        isRescheduling = false;
-        workoutToReschedule = null;
+        isRescheduling = false; workoutToReschedule = null;
         rescheduleBanner.classList.add('hidden');
         appContainer.classList.remove('reschedule-mode');
     }
@@ -708,56 +784,22 @@ document.addEventListener('DOMContentLoaded', function () {
         const todayStr = today.toISOString().split('T')[0];
         const workout = trainingData.find(w => w.date === todayStr) || { am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
         const container = document.getElementById('today-content');
-        
-        container.innerHTML = `
-            <div class="space-y-4">
-                <div class="border-l-4 border-indigo-500 pl-3">
-                    <p class="text-sm font-medium text-gray-500">AM</p>
-                    <p class="text-lg font-bold">${workout.am}</p>
-                    <p class="text-xs text-gray-600">${workout.am_details || ""}</p>
-                </div>
-                 <div class="border-l-4 border-teal-500 pl-3">
-                    <p class="text-sm font-medium text-gray-500">PM</p>
-                    <p class="text-lg font-bold">${workout.pm}</p>
-                     <p class="text-xs text-gray-600">${workout.pm_details || ""}</p>
-                </div>
-            </div>
-        `;
+        container.innerHTML = `<div class="space-y-4"><div class="border-l-4 border-indigo-500 pl-3"><p class="text-sm font-medium text-gray-500">AM</p><p class="text-lg font-bold">${workout.am}</p><p class="text-xs text-gray-600">${workout.am_details || ""}</p></div><div class="border-l-4 border-teal-500 pl-3"><p class="text-sm font-medium text-gray-500">PM</p><p class="text-lg font-bold">${workout.pm}</p><p class="text-xs text-gray-600">${workout.pm_details || ""}</p></div></div>`;
     }
     
     function updateCountdowns() {
         if (countdownInterval) clearInterval(countdownInterval);
-
-        const upcomingRaces = raceInfo
-            .map(race => ({ ...race, diff: race.date - new Date() }))
-            .filter(race => race.diff >= 0)
-            .sort((a, b) => a.date - b.date);
-        
-        countdown1Container.innerHTML = '';
-        countdown2Container.innerHTML = '';
-
+        const upcomingRaces = raceInfo.map(race => ({ ...race, diff: race.date - new Date() })).filter(race => race.diff >= 0).sort((a, b) => a.date - b.date);
+        countdown1Container.innerHTML = ''; countdown2Container.innerHTML = '';
         if (upcomingRaces.length > 0) {
             const race1 = upcomingRaces[0];
-            countdown1Container.innerHTML = `
-                <h3 class="text-md font-semibold text-gray-500">${race1.name}</h3>
-                <div id="timer-1" class="flex justify-center items-end space-x-1 sm:space-x-2 text-2xl sm:text-3xl font-bold text-indigo-600"></div>
-                <p class="text-xs text-gray-500">${race1.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-            `;
-        } else {
-            countdown1Container.innerHTML = `<h3 class="text-md font-semibold text-gray-500">All Races Complete! 🎉</h3>`;
-        }
-
+            countdown1Container.innerHTML = `<h3 class="text-md font-semibold text-gray-500">${race1.name}</h3><div id="timer-1" class="flex justify-center items-end space-x-1 text-2xl font-bold text-indigo-600"></div><p class="text-xs text-gray-500">${race1.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>`;
+        } else countdown1Container.innerHTML = `<h3 class="text-md font-semibold text-gray-500">All Races Complete! 🎉</h3>`;
         if (upcomingRaces.length > 1) {
             const race2 = upcomingRaces[1];
-             countdown2Container.innerHTML = `
-                <h3 class="text-md font-semibold text-gray-500">${race2.name}</h3>
-                <div id="timer-2" class="flex justify-center items-end space-x-1 sm:space-x-2 text-2xl sm:text-3xl font-bold text-indigo-600"></div>
-                <p class="text-xs text-gray-500">${race2.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
-            `;
+            countdown2Container.innerHTML = `<h3 class="text-md font-semibold text-gray-500">${race2.name}</h3><div id="timer-2" class="flex justify-center items-end space-x-1 text-2xl font-bold text-indigo-600"></div><p class="text-xs text-gray-500">${race2.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>`;
         }
-        
         handleCountdownVisibility();
-
         const tick = () => {
             const currentTime = new Date();
             upcomingRaces.forEach((race, index) => {
@@ -765,164 +807,309 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (timerEl) {
                     const diff = race.date - currentTime;
                     if (diff > 0) {
-                        const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-                        const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                        const s = Math.floor((diff % (1000 * 60)) / 1000);
-                        timerEl.innerHTML = `
-                            <div>${d}<span class="text-sm font-medium text-gray-500">d</span></div> 
-                            <div class="text-gray-300 -translate-y-1">:</div>
-                            <div>${String(h).padStart(2, '0')}<span class="text-sm font-medium text-gray-500">h</span></div> 
-                            <div class="text-gray-300 -translate-y-1">:</div>
-                            <div>${String(m).padStart(2, '0')}<span class="text-sm font-medium text-gray-500">m</span></div> 
-                            <div class="text-gray-300 -translate-y-1">:</div>
-                            <div>${String(s).padStart(2, '0')}<span class="text-sm font-medium text-gray-500">s</span></div>
-                        `;
-                    } else {
-                        timerEl.innerHTML = '<span class="text-lg">Race is underway!</span>';
-                    }
+                        const d = Math.floor(diff / 864e5), h = Math.floor((diff % 864e5) / 36e5), m = Math.floor((diff % 36e5) / 6e4), s = Math.floor((diff % 6e4) / 1000);
+                        timerEl.innerHTML = `<div>${d}<span class="text-sm">d</span></div><div>:</div><div>${String(h).padStart(2, '0')}<span class="text-sm">h</span></div><div>:</div><div>${String(m).padStart(2, '0')}<span class="text-sm">m</span></div><div>:</div><div>${String(s).padStart(2, '0')}<span class="text-sm">s</span></div>`;
+                    } else timerEl.innerHTML = '<span class="text-lg">Race underway!</span>';
                 }
             });
         };
-        
         tick();
         countdownInterval = setInterval(tick, 1000);
     }
     
     function handleCountdownVisibility() {
         const upcomingRacesCount = raceInfo.filter(race => race.date > new Date()).length;
-
-        if (window.innerWidth < 1024 && upcomingRacesCount > 1) { // Mobile view with more than one race
+        if (window.innerWidth < 1024 && upcomingRacesCount > 1) {
             toggleCountdownBtn.classList.remove('hidden');
-            if (collapseIcon.classList.contains('hidden')) {
-                 countdown2Container.classList.add('hidden');
-            }
-        } else { // Desktop view or only one race left
+            countdown2Container.classList.toggle('hidden', collapseIcon.classList.contains('hidden'));
+        } else {
             toggleCountdownBtn.classList.add('hidden');
-            if(upcomingRacesCount > 1) {
-                countdown2Container.classList.remove('hidden');
-            } else {
-                countdown2Container.classList.add('hidden');
-            }
+            countdown2Container.classList.toggle('hidden', upcomingRacesCount <= 1);
         }
     }
 
-    function refreshApp() {
-        renderCalendar();
-        updateTodaysWorkout();
+    async function callGeminiAPI(prompt, apiKey) {
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${apiKey}`;
+        const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error.message || `HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        } catch (error) {
+            console.error("Gemini API Error:", error);
+            throw error;
+        }
     }
     
-    function initializeApp() {
-        appContainer.classList.remove('hidden');
-        setupContainer.classList.add('hidden');
-        refreshApp();
-        updateCountdowns();
-        addEventListeners();
-        setTimeout(scrollToToday, 100);
-    }
-    
-    function addEventListeners() {
-        prevWeekBtn.addEventListener('click', () => {
-            currentStartDate.setDate(currentStartDate.getDate() - 7);
-            renderCalendar();
-        });
-
-        nextWeekBtn.addEventListener('click', () => {
-            currentStartDate.setDate(currentStartDate.getDate() + 7);
-            renderCalendar();
-        });
+    async function handleGeminiUpdate() {
+        const btn = submitGeminiUpdateBtn;
+        const btnText = document.getElementById('update-btn-text');
+        const spinner = document.getElementById('update-spinner');
+        const errorEl = geminiUpdateErrorEl;
         
+        btn.disabled = true;
+        btnText.textContent = 'Updating...';
+        spinner.classList.remove('hidden');
+        errorEl.classList.add('hidden');
+        
+        const weekData = [];
+        for(let i=0; i<7; i++){
+            const d = new Date(currentStartDate);
+            d.setDate(d.getDate() + i);
+            const dStr = d.toISOString().split('T')[0];
+            const workout = trainingData.find(w => w.date === dStr) || {date: dStr, am: '(Rest)', am_details:'', pm:'(Rest)', pm_details:''};
+            weekData.push(workout);
+        }
+
+        const userPrompt = geminiUpdatePromptInput.value;
+        const systemPrompt = `You are an expert athletic trainer. Your task is to modify the provided week's training plan based on the user's request. The current week's data is a JSON array: ${JSON.stringify(weekData)}. You MUST ONLY return a valid JSON array of 7 objects representing the complete, updated week. The JSON objects must have the exact keys: "date", "am", "am_details", "pm", "pm_details". Provide only the raw JSON content, without any surrounding text or markdown formatting. Do not use commas "," in your workout names or details. User request: "${userPrompt}"`;
+
+        try {
+            const resultText = await callGeminiAPI(systemPrompt, geminiSettings.apiKey);
+            const cleanedText = resultText.replace(/```json|```/g, '').trim();
+            const newWeekData = JSON.parse(cleanedText);
+
+            if (Array.isArray(newWeekData) && newWeekData.length === 7) {
+                newWeekData.forEach(newDay => {
+                    const index = trainingData.findIndex(d => d.date === newDay.date);
+                    if (index > -1) {
+                        trainingData[index] = newDay;
+                    } else {
+                        trainingData.push(newDay);
+                    }
+                });
+                trainingData.sort((a, b) => new Date(a.date) - new Date(b.date));
+                saveDataToLocal();
+                geminiUpdateModal.classList.add('hidden');
+                refreshApp();
+            } else {
+                throw new Error("Invalid data format returned by AI.");
+            }
+
+        } catch (error) {
+            errorEl.textContent = `Error: ${error.message}`;
+            errorEl.classList.remove('hidden');
+        } finally {
+            btn.disabled = false;
+            btnText.textContent = 'Update Plan';
+            spinner.classList.add('hidden');
+        }
+    }
+
+    async function handleGeminiGenerate() {
+        const btn = submitGeminiGenerateBtn;
+        const btnText = document.getElementById('generate-btn-text');
+        const spinner = document.getElementById('generate-spinner');
+        const errorEl = geminiGenerateErrorEl;
+        
+        const userPrompt = geminiPromptInput.value;
+        const userApiKey = geminiKeyGenerateInput.value.trim();
+
+        if (!userPrompt || !userApiKey) {
+            errorEl.textContent = 'Please provide your goals and API key.';
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        btn.disabled = true;
+        btnText.textContent = 'Generating...';
+        spinner.classList.remove('hidden');
+        errorEl.classList.add('hidden');
+
+        const today = new Date();
+            const yyyy = today.getFullYear();
+    let mm = today.getMonth() + 1; // getMonth() returns 0-11, so add 1 for actual month
+    let dd = today.getDate();
+        if (mm < 10) {
+        mm = '0' + mm;
+    }
+    if (dd < 10) {
+        dd = '0' + dd;
+    }
+        const formattedDate = `${yyyy}-${mm}-${dd}`;
+
+        const systemPrompt = `You are an expert athletic trainer. Your task is to create a training plan based on the user's request. You MUST ONLY return a valid CSV-formatted string. The CSV MUST have the exact headers in this order: "date,am,am_details,pm,pm_details". am should be the am workout type such as run, strength training, etc, am_details gives specifics of the workout. pm should be the pm workout type, pm_details gives specifics of the workout. Dates must be in YYYY-MM-DD format. The details for each workout should be descriptive. Provide only the raw CSV content, without any surrounding text, markdown formatting like \`\`\`csv, or explanations. Do not use commas "," in your workout names or details. User's request: "${userPrompt}" The plan should start on today's date: ${formattedDate}.`;
+
+        try {
+            const resultText = await callGeminiAPI(systemPrompt, userApiKey);
+            parseCSV(resultText);
+            saveDataToLocal();
+            downloadCSVString(resultText, 'ai_generated_plan.csv');
+
+            geminiSettings.apiKey = userApiKey;
+            geminiSettings.enabled = true;
+            localStorage.setItem('geminiSettings', JSON.stringify(geminiSettings));
+            geminiGenerateModal.classList.add('hidden');
+            initializeApp();
+            refreshApp();
+
+        } catch (error) {
+            errorEl.textContent = `Error: ${error.message}`;
+            errorEl.classList.remove('hidden');
+        } finally {
+            btn.disabled = false;
+            btnText.textContent = 'Generate Plan';
+            spinner.classList.add('hidden');
+        }
+    }
+    
+    function handleFileUpload() {
+        const file = csvUploadInput.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            parseCSV(text);
+            saveDataToLocal();
+            settingsModal.classList.add('hidden');
+            initializeApp();
+            refreshApp();
+        };
+        reader.readAsText(file);
+    }
+
+    function addMainAppEventListeners() {
+        prevWeekBtn.addEventListener('click', () => { currentStartDate.setDate(currentStartDate.getDate() - 7); renderCalendar(); });
+        nextWeekBtn.addEventListener('click', () => { currentStartDate.setDate(currentStartDate.getDate() + 7); renderCalendar(); });
         calendarEl.addEventListener('click', (e) => {
             const calendarRow = e.target.closest('.calendar-row');
             if (calendarRow) {
                 const sessionCell = e.target.closest('.session-cell');
-                if (isRescheduling && sessionCell) {
-                    completeReschedule(sessionCell.dataset.fulldate, sessionCell.dataset.session);
-                } else if (!isRescheduling) {
-                    showModal(calendarRow.dataset.fulldate, false);
-                }
+                if (isRescheduling && sessionCell) completeReschedule(sessionCell.dataset.fulldate, sessionCell.dataset.session);
+                else if (!isRescheduling) showModal(calendarRow.dataset.fulldate, false);
             }
         });
-
-        closeModalBtn.addEventListener('click', () => {
-            modal.classList.add('hidden');
+        closeModalBtn.addEventListener('click', () => modal.classList.add('hidden'));
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.add('hidden'); });
+        cancelRescheduleBtn.addEventListener('click', () => cancelReschedule());
+        settingsBtn.addEventListener('click', () => {
+            const hasUrl = !!localStorage.getItem('googleSheetUrl');
+            forceReloadBtn.disabled = !hasUrl;
+            settingsModal.classList.remove('hidden');
         });
-
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.classList.add('hidden');
-            }
-        });
-        
-        cancelRescheduleBtn.addEventListener('click', () => {
-            cancelReschedule();
-        });
-        
-        showHelpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
-        closeHelpModalBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
-
-        settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
         closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
-        
-        exportPlanBtn.addEventListener('click', () => {
-            exportToCSV();
-            settingsModal.classList.add('hidden');
-        });
-
+        exportPlanBtn.addEventListener('click', () => { exportToCSV(); settingsModal.classList.add('hidden'); });
         forceReloadBtn.addEventListener('click', () => {
-            if (confirm('Are you sure? This will discard your local changes and reload the original plan from your Google Sheet.')) {
+            if (confirm('Discard local changes and reload from original Google Sheet?')) {
                 const savedUrl = localStorage.getItem('googleSheetUrl');
-                if (savedUrl) {
-                    fetchData(savedUrl);
-                }
+                if (savedUrl) fetchData(savedUrl);
                 settingsModal.classList.add('hidden');
             }
         });
-
-        changeSourceBtn.addEventListener('click', () => {
-             if (confirm('Are you sure? This will clear all data and take you to the setup screen.')) {
+        resetAppBtn.addEventListener('click', () => { 
+            if (confirm('This will clear all data and return to the welcome screen. Are you sure?')) {
+                if (countdownInterval) clearInterval(countdownInterval);
                 localStorage.clear();
-                location.reload();
+                trainingData = [];
+                appContainer.classList.add('hidden');
+                setupContainer.classList.remove('hidden');
+            } 
+        });
+        
+        csvUploadInput.addEventListener('change', () => {
+             loadCsvBtn.disabled = !csvUploadInput.files.length;
+        });
+        loadCsvBtn.addEventListener('click', handleFileUpload);
+
+
+        toggleCountdownBtn.addEventListener('click', () => { countdown2Container.classList.toggle('hidden'); expandIcon.classList.toggle('hidden'); collapseIcon.classList.toggle('hidden'); });
+        window.addEventListener('resize', () => { clearTimeout(window.resizeTimeout); window.resizeTimeout = setTimeout(handleCountdownVisibility, 250); });
+        
+        geminiSettingsBtn.addEventListener('click', () => geminiSettingsModal.classList.remove('hidden'));
+        
+        geminiUpdateBtn.addEventListener('click', () => {
+            geminiUpdateModal.classList.remove('hidden');
+        });
+        closeGeminiUpdateModalBtn.addEventListener('click', () => geminiUpdateModal.classList.add('hidden'));
+        submitGeminiUpdateBtn.addEventListener('click', handleGeminiUpdate);
+        
+        geminiGenerateNewBtn.addEventListener('click', () => {
+            geminiGenerateModal.classList.remove('hidden');
+        });
+    }
+    
+    function addSetupEventListeners() {
+        showHelpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
+        closeHelpModalBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
+        
+        closeGeminiSettingsModalBtn.addEventListener('click', () => geminiSettingsModal.classList.add('hidden'));
+
+        geminiApiKeyInput.addEventListener('input', () => {
+            const keyIsPresent = !!geminiApiKeyInput.value.trim();
+            enableGeminiToggle.disabled = !keyIsPresent;
+            if (!keyIsPresent) {
+                enableGeminiToggle.setAttribute('aria-checked', false);
+                enableGeminiToggle.classList.replace('bg-indigo-600', 'bg-gray-200');
+                geminiToggleHandle.classList.replace('translate-x-5', 'translate-x-0');
             }
         });
 
-        toggleCountdownBtn.addEventListener('click', () => {
-            countdown2Container.classList.toggle('hidden');
-            expandIcon.classList.toggle('hidden');
-            collapseIcon.classList.toggle('hidden');
+        enableGeminiToggle.addEventListener('click', () => {
+            if (enableGeminiToggle.disabled) return;
+            const isEnabled = enableGeminiToggle.getAttribute('aria-checked') === 'true';
+            enableGeminiToggle.setAttribute('aria-checked', !isEnabled);
+             if (!isEnabled) {
+                enableGeminiToggle.classList.replace('bg-gray-200', 'bg-indigo-600');
+                geminiToggleHandle.classList.replace('translate-x-0', 'translate-x-5');
+            } else {
+                enableGeminiToggle.classList.replace('bg-indigo-600', 'bg-gray-200');
+                geminiToggleHandle.classList.replace('translate-x-5', 'translate-x-0');
+            }
         });
-
-        let resizeTimeout;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(handleCountdownVisibility, 250);
+        saveGeminiSettingsBtn.addEventListener('click', saveGeminiSettings);
+        
+        document.getElementById('setup-generate-btn').addEventListener('click', () => {
+            geminiKeyGenerateInput.value = geminiSettings.apiKey || '';
+            geminiGenerateModal.classList.remove('hidden')
+        });
+        closeGeminiGenerateModalBtn.addEventListener('click', () => geminiGenerateModal.classList.add('hidden'));
+        submitGeminiGenerateBtn.addEventListener('click', handleGeminiGenerate);
+        
+        document.getElementById('setup-blank-btn').addEventListener('click', () => {
+            trainingData = [];
+            saveDataToLocal();
+            initializeApp();
+        });
+        
+        document.getElementById('setup-import-btn').addEventListener('click', () => importSheetModal.classList.remove('hidden'));
+        closeImportModalBtn.addEventListener('click', () => importSheetModal.classList.add('hidden'));
+        
+        loadDataBtn.addEventListener('click', () => {
+            const url = sheetUrlInput.value.trim();
+            if (url) { setupErrorEl.classList.add('hidden'); fetchData(url); } 
+            else { setupErrorEl.textContent = 'Please enter a valid URL.'; setupErrorEl.classList.remove('hidden'); }
         });
     }
 
-    loadDataBtn.addEventListener('click', () => {
-        const url = sheetUrlInput.value.trim();
-        if (url) {
-            setupErrorEl.classList.add('hidden');
-            fetchData(url);
-        } else {
-            setupErrorEl.textContent = 'Please enter a valid URL.';
-            setupErrorEl.classList.remove('hidden');
-        }
-    });
-
+    function refreshApp() { renderCalendar(); updateTodaysWorkout(); }
+    
+    function initializeApp() {
+        appContainer.classList.remove('hidden');
+        setupContainer.classList.add('hidden');
+        loadGeminiSettings();
+        refreshApp();
+        updateCountdowns();
+        addMainAppEventListeners();
+        setTimeout(scrollToToday, 100);
+    }
+    
+    // Initial Load Logic
+    addSetupEventListeners();
     const savedTrainingData = localStorage.getItem('savedTrainingData');
     if (savedTrainingData) {
         trainingData = JSON.parse(savedTrainingData);
         initializeApp();
     } else {
-        const savedUrl = localStorage.getItem('googleSheetUrl');
-        if (savedUrl) {
-             fetchData(savedUrl);
-        } else {
-            setupContainer.classList.remove('hidden');
-            showHelpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
-            closeHelpModalBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
-        }
+        setupContainer.classList.remove('hidden');
     }
 });
 </script>
