@@ -223,6 +223,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function parseCSV(text) {
         const rows = text.split(/\r?\n/);
+        if (rows.length === 0) return;
         const headers = rows[0].split(',').map(h => h.trim());
         const data = [];
         for (let i = 1; i < rows.length; i++) {
@@ -230,9 +231,16 @@ document.addEventListener('DOMContentLoaded', function () {
             const values = rows[i].split(',');
             const entry = {};
             headers.forEach((header, index) => {
-                entry[header] = values[index] ? values[index].trim().replace(/^"|"$/g, '') : '(Rest)';
+                const rawValue = values[index] ? values[index].trim().replace(/^"|"$/g, '') : '';
+                if (header === 'am' || header === 'pm') {
+                    entry[header] = rawValue || '(Rest)';
+                } else {
+                    entry[header] = rawValue;
+                }
             });
-            data.push(entry);
+            if (entry.date) {
+                data.push(entry);
+            }
         }
         trainingData = data;
     }
@@ -273,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (session.includes('Strength')) return '🏋️';
         if (session.includes('Basketball')) return '🏀';
         if (session.includes('Game') || session.includes('RACE')) return '🏆';
-        if (session.includes('Recovery')) return '🧘🏾‍♂️';
+        if (session.includes('Recovery')) return '🧘';
         return '⚡';
     }
 
@@ -486,9 +494,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (originalDayIndex > -1) {
             trainingData[originalDayIndex][workoutToReschedule.sessionType] = '(Rest)';
-            if (trainingData[originalDayIndex].am === '(Rest)' && trainingData[originalDayIndex].pm === '(Rest)' && !trainingData[originalDayIndex].details) {
-                trainingData.splice(originalDayIndex, 1);
-            }
         }
 
         if (targetDayIndex === -1) {
@@ -498,11 +503,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         trainingData[targetDayIndex][newSessionType] = workoutToReschedule.activity;
         
-        const detailNote = `(Rescheduled from ${new Date(workoutToReschedule.date  + 'T12:00:00').toLocaleDateString('en-US',{month:'short', day:'numeric'})})`;
-        if (!trainingData[targetDayIndex].details || !trainingData[targetDayIndex].details.includes(detailNote)) {
-             trainingData[targetDayIndex].details = trainingData[targetDayIndex].details ? `${trainingData[targetDayIndex].details} | ${detailNote}` : detailNote;
-        }
-
         trainingData.sort((a,b) => new Date(a.date) - new Date(b.date));
         
         saveDataToLocal();
