@@ -17,14 +17,14 @@
         }
         .calendar-row {
             transition: background-color 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .calendar-row:hover {
+            background-color: #eef2ff; /* indigo-50 */
         }
         .session-cell {
             transition: background-color 0.2s ease-in-out;
-            cursor: pointer;
             min-height: 70px; /* Ensure cells have a minimum height */
-        }
-        .session-cell:hover {
-            background-color: #eef2ff; /* indigo-50 */
         }
         .reschedule-mode .session-cell:hover {
             background-color: #dcfce7; /* green-100 */
@@ -198,6 +198,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const calendarEl = document.getElementById('calendar');
     const prevWeekBtn = document.getElementById('prev-week');
     const nextWeekBtn = document.getElementById('next-week');
+    const viewTitleEl = document.getElementById('view-title');
     
     const modal = document.getElementById('modal');
     const closeModalBtn = document.getElementById('close-modal');
@@ -218,7 +219,6 @@ document.addEventListener('DOMContentLoaded', function () {
     today.setHours(0, 0, 0, 0); 
     
     let currentStartDate = new Date(today);
-    // Set to the Monday of the current week.
     const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
     currentStartDate.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
 
@@ -324,14 +324,16 @@ document.addEventListener('DOMContentLoaded', function () {
         if (session.includes('Strength')) return '🏋️';
         if (session.includes('Basketball')) return '🏀';
         if (session.includes('Game') || session.includes('RACE')) return '🏆';
-        if (session.includes('Recovery')) return '🧘';
+        if (session.includes('Recovery') || session.includes('Agility')) return '🧘';
         return '⚡';
     }
 
     function renderCalendar() {
         calendarEl.innerHTML = '';
+        const weekStartFormatted = currentStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        viewTitleEl.textContent = `Plan for Week of ${weekStartFormatted}`;
         
-        for (let i = 0; i < 7; i++) { // Always show 7 days of the week
+        for (let i = 0; i < 7; i++) {
             const dayDate = new Date(currentStartDate);
             dayDate.setDate(dayDate.getDate() + i);
             const dateStr = dayDate.toISOString().split('T')[0];
@@ -347,15 +349,15 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             
             const dateCell = document.createElement('div');
-            dateCell.className = 'w-1/4 md:w-1/5 text-center p-2 rounded-l-lg bg-gray-100 flex flex-col justify-center';
+            dateCell.className = 'w-1/3 md:w-1/5 text-center p-2 rounded-l-lg bg-gray-100 flex flex-col justify-center';
             dateCell.innerHTML = `
                 <div class="font-bold text-lg text-gray-800">${dayDate.toLocaleDateString('en-US', {day: 'numeric'})}</div>
-                <div class="text-xs text-gray-500">${dayDate.toLocaleDateString('en-US', {weekday: 'long'})}</div>
+                <div class="text-sm text-gray-500">${dayDate.toLocaleDateString('en-US', {weekday: 'long'})}</div>
             `;
             dayRow.appendChild(dateCell);
 
             const workoutContainer = document.createElement('div');
-            workoutContainer.className = 'w-3/4 md:w-4/5 flex flex-col gap-1';
+            workoutContainer.className = 'w-2/3 md:w-4/5 flex flex-col gap-1';
             
             const amSession = workoutData ? workoutData.am : '(Rest)';
             const amDetails = workoutData ? workoutData.am_details : '';
@@ -363,26 +365,26 @@ document.addEventListener('DOMContentLoaded', function () {
             const pmDetails = workoutData ? workoutData.pm_details : '';
 
             const amCell = document.createElement('div');
-            amCell.className = 'session-cell am-cell flex-1 bg-white p-2 border border-gray-200 rounded-tr-lg md:rounded-r-lg flex items-center';
+            amCell.className = 'session-cell am-cell flex-1 bg-white p-2 border border-gray-200 rounded-tr-lg md:rounded-r-lg flex items-start';
             amCell.dataset.session = 'am';
             amCell.dataset.fulldate = dateStr;
             amCell.innerHTML = `
-                <div class="w-8 text-center font-bold text-indigo-500 self-start pt-1">AM</div>
+                <div class="w-8 text-center font-bold text-indigo-500 pt-1">AM</div>
                 <div class="flex-grow pl-2 border-l border-gray-200">
-                    <p class="font-semibold text-sm whitespace-normal">${getWorkoutIcon(amSession)} ${amSession}</p>
-                    <p class="text-xs text-gray-500 whitespace-normal">${amDetails}</p>
+                    <p class="font-semibold text-sm whitespace-normal break-words">${getWorkoutIcon(amSession)} ${amSession}</p>
+                    <p class="text-xs text-gray-500 whitespace-normal break-words">${amDetails}</p>
                 </div>
             `;
             
             const pmCell = document.createElement('div');
-            pmCell.className = 'session-cell pm-cell flex-1 bg-white p-2 border border-gray-200 rounded-br-lg md:rounded-r-lg flex items-center';
+            pmCell.className = 'session-cell pm-cell flex-1 bg-white p-2 border border-gray-200 rounded-br-lg md:rounded-r-lg flex items-start';
             pmCell.dataset.session = 'pm';
             pmCell.dataset.fulldate = dateStr;
             pmCell.innerHTML = `
-                <div class="w-8 text-center font-bold text-teal-500 self-start pt-1">PM</div>
+                <div class="w-8 text-center font-bold text-teal-500 pt-1">PM</div>
                 <div class="flex-grow pl-2 border-l border-gray-200">
-                    <p class="font-semibold text-sm whitespace-normal">${getWorkoutIcon(pmSession)} ${pmSession}</p>
-                    <p class="text-xs text-gray-500 whitespace-normal">${pmDetails}</p>
+                    <p class="font-semibold text-sm whitespace-normal break-words">${getWorkoutIcon(pmSession)} ${pmSession}</p>
+                    <p class="text-xs text-gray-500 whitespace-normal break-words">${pmDetails}</p>
                 </div>
             `;
 
@@ -402,12 +404,21 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
 
-    function showModal(dateStr, sessionType = null, isEditing = false) {
-        let workoutData = trainingData.find(d => d.date === dateStr) || 
-                          { date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
-
+    function showModal(dateStr, isAdding = false) {
         const date = new Date(dateStr + 'T12:00:00');
         modalDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        if (isAdding) {
+            showAddWorkoutForm(dateStr);
+        } else {
+            showWorkoutDetails(dateStr);
+        }
+        modal.classList.remove('hidden');
+    }
+
+    function showWorkoutDetails(dateStr, isEditing = false) {
+        let workoutData = trainingData.find(d => d.date === dateStr) || 
+                          { date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
         
         if (isEditing) {
             modalContentEl.innerHTML = `
@@ -435,7 +446,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
             `;
             document.getElementById('save-changes-btn').onclick = () => saveWorkout(dateStr);
-            document.getElementById('cancel-edit-btn').onclick = () => showModal(dateStr, null, false);
+            document.getElementById('cancel-edit-btn').onclick = () => showWorkoutDetails(dateStr);
         } else {
              modalContentEl.innerHTML = `
                 <div id="view-mode-content" data-date="${dateStr}">
@@ -458,11 +469,13 @@ document.addEventListener('DOMContentLoaded', function () {
                         </div>
                     </div>
                     <div class="flex flex-wrap justify-end gap-3 pt-6">
+                        <button id="add-workout-btn" class="bg-green-100 text-green-800 px-4 py-2 rounded-lg font-semibold hover:bg-green-200 transition-colors">Add Workout</button>
                         <button id="edit-day-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Edit Day / Add Notes</button>
                     </div>
                 </div>
             `;
-            document.getElementById('edit-day-btn').onclick = () => showModal(dateStr, null, true);
+            document.getElementById('edit-day-btn').onclick = () => showWorkoutDetails(dateStr, true);
+            document.getElementById('add-workout-btn').onclick = () => showAddWorkoutForm(dateStr);
             document.querySelectorAll('.cancel-session-btn').forEach(btn => {
                 btn.onclick = (e) => cancelSession(dateStr, e.target.dataset.session);
             });
@@ -470,7 +483,93 @@ document.addEventListener('DOMContentLoaded', function () {
                 btn.onclick = (e) => initiateReschedule(dateStr, e.target.dataset.session);
             });
         }
-        modal.classList.remove('hidden');
+    }
+
+    function showAddWorkoutForm(dateStr) {
+        modalContentEl.innerHTML = `
+            <div class="space-y-4" data-date="${dateStr}">
+                <div>
+                    <label for="workout-type" class="block text-sm font-medium text-gray-700">Workout Type</label>
+                    <select id="workout-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <option>Run</option>
+                        <option>Strength</option>
+                        <option>Basketball</option>
+                        <option>Agility Training</option>
+                    </select>
+                </div>
+                <div id="run-type-container" class="hidden">
+                    <label for="run-type" class="block text-sm font-medium text-gray-700">Run Type</label>
+                    <select id="run-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <option>Easy</option>
+                        <option>Interval</option>
+                        <option>Long</option>
+                        <option>Tempo</option>
+                    </select>
+                </div>
+                 <div>
+                    <label for="time-slot" class="block text-sm font-medium text-gray-700">Time Slot</label>
+                    <select id="time-slot" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <option value="am">AM</option>
+                        <option value="pm">PM</option>
+                    </select>
+                </div>
+                 <div>
+                    <label for="new-workout-details" class="block text-sm font-medium text-gray-700">Details / Notes</label>
+                    <textarea id="new-workout-details" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" placeholder="e.g., 4 miles, 3x5 Bench Press, etc."></textarea>
+                </div>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button id="cancel-add-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300">Cancel</button>
+                    <button id="save-new-workout-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700">Save Workout</button>
+                </div>
+            </div>
+        `;
+
+        const workoutTypeSelect = document.getElementById('workout-type');
+        const runTypeContainer = document.getElementById('run-type-container');
+
+        const toggleRunType = () => {
+             runTypeContainer.classList.toggle('hidden', workoutTypeSelect.value !== 'Run');
+             if(workoutTypeSelect.value === 'Run') runTypeContainer.classList.remove('hidden');
+        }
+        toggleRunType();
+        workoutTypeSelect.addEventListener('change', toggleRunType);
+
+        document.getElementById('cancel-add-btn').onclick = () => showWorkoutDetails(dateStr);
+        document.getElementById('save-new-workout-btn').onclick = () => saveNewWorkout(dateStr);
+    }
+
+    function saveNewWorkout(dateStr) {
+        const workoutType = document.getElementById('workout-type').value;
+        const runType = document.getElementById('run-type').value;
+        const timeSlot = document.getElementById('time-slot').value;
+        const details = document.getElementById('new-workout-details').value.trim();
+
+        let workoutName = workoutType;
+        if (workoutType === 'Run') {
+            workoutName = `Run: ${runType}`;
+        } else if (workoutType === 'Strength') {
+            workoutName = 'Strength Training';
+        }
+
+        let dayIndex = trainingData.findIndex(d => d.date === dateStr);
+        if (dayIndex === -1) {
+            trainingData.push({ date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' });
+            dayIndex = trainingData.length - 1;
+        }
+
+        const existingWorkout = trainingData[dayIndex][timeSlot];
+        if (existingWorkout && existingWorkout !== '(Rest)') {
+            if (!confirm(`This will overwrite the existing workout: "${existingWorkout}". Are you sure?`)) {
+                return;
+            }
+        }
+
+        trainingData[dayIndex][timeSlot] = workoutName;
+        trainingData[dayIndex][`${timeSlot}_details`] = details;
+
+        saveDataToLocal();
+        refreshApp();
+        modal.classList.add('hidden');
     }
 
     function saveWorkout(dateStr) {
@@ -734,12 +833,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         
         calendarEl.addEventListener('click', (e) => {
-            const sessionCell = e.target.closest('.session-cell');
-            if (sessionCell) {
-                if (isRescheduling) {
+            const calendarRow = e.target.closest('.calendar-row');
+            if (calendarRow) {
+                const sessionCell = e.target.closest('.session-cell');
+                if (isRescheduling && sessionCell) {
                     completeReschedule(sessionCell.dataset.fulldate, sessionCell.dataset.session);
-                } else {
-                    showModal(sessionCell.dataset.fulldate, sessionCell.dataset.session);
+                } else if (!isRescheduling) {
+                    showModal(calendarRow.dataset.fulldate, false);
                 }
             }
         });
