@@ -41,6 +41,9 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .custom-modal-backdrop {
+             background-color: rgba(0, 0, 0, 0.6);
+        }
     </style>
 </head>
 <body class="text-gray-800">
@@ -60,12 +63,12 @@
         </div>
     </div>
     
-    <div id="help-modal" class="fixed inset-0 bg-black bg-opacity-50 z-[101] hidden flex justify-center items-center p-4">
+    <div id="help-modal" class="fixed inset-0 custom-modal-backdrop z-[101] hidden flex justify-center items-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-8 relative">
             <button id="close-help-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
             <h3 class="text-2xl font-bold mb-4 text-gray-900">How to Get Your Google Sheet URL</h3>
             <div class="text-left space-y-4 text-gray-700">
-                <p><strong>Step 1: Format Your Google Sheet</strong><br>Create a sheet with the exact column headers in the first row: <code>date</code>, <code>am</code>, <code>pm</code>, <code>details</code>. Dates must be in <code>YYYY-MM-DD</code> format.</p>
+                <p><strong>Step 1: Format Your Google Sheet</strong><br>Create a sheet with the exact column headers in the first row: <code>date</code>, <code>am</code>, <code>am_details</code>, <code>pm</code>, <code>pm_details</code>. Dates must be in <code>YYYY-MM-DD</code> format.</p>
                 <p><strong>Step 2: Publish to the Web</strong><br>In Google Sheets, go to <code>File</code> > <code>Share</code> > <code>Publish to web</code>.</p>
                 <p><strong>Step 3: Select CSV Format</strong><br>In the "Link" tab, make sure your training sheet is selected. Then, in the dropdown that says "Web page", change it to <code>Comma-separated values (.csv)</code>.</p>
                 <p><strong>Step 4: Publish and Copy URL</strong><br>Click the green "Publish" button and confirm. A URL will be generated. Copy this entire URL.</p>
@@ -140,13 +143,25 @@
 
     </div>
 
-    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex justify-center items-center p-4">
+    <div id="modal" class="fixed inset-0 custom-modal-backdrop z-50 hidden flex justify-center items-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-8 relative">
             <button id="close-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
             <h3 id="modal-date" class="text-3xl font-bold mb-6 text-gray-900"></h3>
             <div id="modal-content" class="space-y-6"></div>
+        </div>
+    </div>
+    
+    <div id="swap-modal" class="fixed inset-0 custom-modal-backdrop z-[102] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+            <h3 class="text-2xl font-bold mb-4 text-gray-900">Slot Occupied</h3>
+            <p id="swap-modal-text" class="text-gray-600 mb-6"></p>
+            <div class="flex justify-center gap-4">
+                <button id="swap-btn" class="bg-green-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-700">Swap</button>
+                <button id="overwrite-btn" class="bg-orange-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-orange-600">Overwrite</button>
+                <button id="cancel-swap-btn" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-400">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -175,6 +190,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const closeModalBtn = document.getElementById('close-modal');
     const modalDateEl = document.getElementById('modal-date');
     const modalContentEl = document.getElementById('modal-content');
+    
+    const swapModal = document.getElementById('swap-modal');
+    const swapModalText = document.getElementById('swap-modal-text');
+    const swapBtn = document.getElementById('swap-btn');
+    const overwriteBtn = document.getElementById('overwrite-btn');
+    const cancelSwapBtn = document.getElementById('cancel-swap-btn');
+
 
     const rescheduleBanner = document.getElementById('reschedule-banner');
     const cancelRescheduleBtn = document.getElementById('cancel-reschedule');
@@ -222,23 +244,26 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function parseCSV(text) {
-        const rows = text.split(/\r?\n/);
-        if (rows.length === 0) return;
+        const rows = text.split(/\r?\n/).filter(row => row.trim() !== '');
+        if (rows.length < 2) return;
         const headers = rows[0].split(',').map(h => h.trim());
         const data = [];
         for (let i = 1; i < rows.length; i++) {
-            if (rows[i].trim() === '') continue;
             const values = rows[i].split(',');
             const entry = {};
             headers.forEach((header, index) => {
                 const rawValue = values[index] ? values[index].trim().replace(/^"|"$/g, '') : '';
-                if (header === 'am' || header === 'pm') {
+                 if (['am', 'pm'].includes(header)) {
                     entry[header] = rawValue || '(Rest)';
                 } else {
                     entry[header] = rawValue;
                 }
             });
             if (entry.date) {
+                entry.am = entry.am || '(Rest)';
+                entry.am_details = entry.am_details || '';
+                entry.pm = entry.pm || '(Rest)';
+                entry.pm_details = entry.pm_details || '';
                 data.push(entry);
             }
         }
@@ -246,7 +271,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     
     function exportToCSV() {
-        const headers = ['date', 'am', 'pm', 'details'];
+        const headers = ['date', 'am', 'am_details', 'pm', 'pm_details'];
         let csvContent = headers.join(',') + '\r\n';
 
         trainingData.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -349,10 +374,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function showModal(dateStr, isEditing = false) {
-        let workoutData = trainingData.find(d => d.date === dateStr);
-        if (!workoutData) {
-            workoutData = { date: dateStr, am: '(Rest)', pm: '(Rest)', details: '' };
-        }
+        let workoutData = trainingData.find(d => d.date === dateStr) || 
+                          { date: dateStr, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
 
         const date = new Date(dateStr + 'T12:00:00');
         modalDateEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -364,13 +387,17 @@ document.addEventListener('DOMContentLoaded', function () {
                         <label for="edit-am" class="block text-sm font-medium text-gray-700">AM Session</label>
                         <input type="text" id="edit-am" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value="${workoutData.am}">
                     </div>
+                     <div>
+                        <label for="edit-am-details" class="block text-sm font-medium text-gray-700">AM Details</label>
+                        <textarea id="edit-am-details" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">${workoutData.am_details || ""}</textarea>
+                    </div>
                     <div>
                         <label for="edit-pm" class="block text-sm font-medium text-gray-700">PM Session</label>
                         <input type="text" id="edit-pm" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" value="${workoutData.pm}">
                     </div>
-                    <div>
-                        <label for="edit-details" class="block text-sm font-medium text-gray-700">Details & Notes</label>
-                        <textarea id="edit-details" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">${workoutData.details || ""}</textarea>
+                     <div>
+                        <label for="edit-pm-details" class="block text-sm font-medium text-gray-700">PM Details</label>
+                        <textarea id="edit-pm-details" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">${workoutData.pm_details || ""}</textarea>
                     </div>
                     <div class="flex justify-end space-x-3 pt-4">
                         <button id="cancel-edit-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Cancel</button>
@@ -383,28 +410,26 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
              modalContentEl.innerHTML = `
                 <div id="view-mode-content" data-date="${dateStr}">
-                    <div class="border-l-4 border-indigo-500 pl-4 py-2">
+                    <div class="border-l-4 border-indigo-500 pl-4 py-2 bg-gray-50 rounded-r-lg">
                         <p class="text-sm font-semibold text-gray-500">AM Session</p>
                         <p class="text-xl font-bold text-gray-900">${workoutData.am}</p>
+                        <p class="text-sm text-gray-600 mt-1">${workoutData.am_details || ""}</p>
                         <div class="flex gap-2 mt-2">
                             <button data-session="am" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-blue-200" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Reschedule</button>
                             <button data-session="am" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200" ${workoutData.am === '(Rest)' ? 'disabled' : ''}>Cancel</button>
                         </div>
                     </div>
-                    <div class="border-l-4 border-teal-500 pl-4 py-2 mt-4">
+                    <div class="border-l-4 border-teal-500 pl-4 py-2 mt-4 bg-gray-50 rounded-r-lg">
                         <p class="text-sm font-semibold text-gray-500">PM Session</p>
                         <p class="text-xl font-bold text-gray-900">${workoutData.pm}</p>
+                         <p class="text-sm text-gray-600 mt-1">${workoutData.pm_details || ""}</p>
                         <div class="flex gap-2 mt-2">
                             <button data-session="pm" class="reschedule-session-btn bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-blue-200" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Reschedule</button>
                             <button data-session="pm" class="cancel-session-btn bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold hover:bg-red-200" ${workoutData.pm === '(Rest)' ? 'disabled' : ''}>Cancel</button>
                         </div>
                     </div>
-                    <div class="bg-gray-100 p-4 rounded-lg mt-4">
-                        <p class="text-sm font-semibold text-gray-500">Details & Notes</p>
-                        <p class="text-lg text-gray-800">${workoutData.details || "No specific details for this day."}</p>
-                    </div>
                     <div class="flex flex-wrap justify-end gap-3 pt-6">
-                        <button id="edit-day-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Edit Day / Add Note</button>
+                        <button id="edit-day-btn" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors">Edit Day / Add Notes</button>
                     </div>
                 </div>
             `;
@@ -422,26 +447,24 @@ document.addEventListener('DOMContentLoaded', function () {
     function saveWorkout(dateStr) {
         let index = trainingData.findIndex(w => w.date === dateStr);
         const amVal = document.getElementById('edit-am').value.trim();
+        const amDetailsVal = document.getElementById('edit-am-details').value.trim();
         const pmVal = document.getElementById('edit-pm').value.trim();
-        const detailsVal = document.getElementById('edit-details').value.trim();
+        const pmDetailsVal = document.getElementById('edit-pm-details').value.trim();
+
+        const workoutData = {
+            date: dateStr,
+            am: amVal || '(Rest)',
+            am_details: amDetailsVal,
+            pm: pmVal || '(Rest)',
+            pm_details: pmDetailsVal
+        };
 
         if (index === -1) {
-            if (amVal && amVal !== '(Rest)' || pmVal && pmVal !== '(Rest)' || detailsVal) {
-                trainingData.push({ 
-                    date: dateStr, 
-                    am: amVal || '(Rest)', 
-                    pm: pmVal || '(Rest)', 
-                    details: detailsVal 
-                });
+            if (workoutData.am !== '(Rest)' || workoutData.pm !== '(Rest)' || workoutData.am_details || workoutData.pm_details) {
+                trainingData.push(workoutData);
             }
         } else {
-            trainingData[index].am = amVal || '(Rest)';
-            trainingData[index].pm = pmVal || '(Rest)';
-            trainingData[index].details = detailsVal;
-        
-            if (trainingData[index].am === '(Rest)' && trainingData[index].pm === '(Rest)' && !trainingData[index].details) {
-                trainingData.splice(index, 1);
-            }
+            trainingData[index] = workoutData;
         }
         
         saveDataToLocal();
@@ -453,9 +476,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const index = trainingData.findIndex(w => w.date === dateStr);
         if (index > -1) {
             trainingData[index][sessionType] = '(Rest)';
-            if (trainingData[index].am === '(Rest)' && trainingData[index].pm === '(Rest)' && !trainingData[index].details) {
-                trainingData.splice(index, 1);
-            }
+            trainingData[index][`${sessionType}_details`] = '';
+            
             saveDataToLocal();
         }
         modal.classList.add('hidden');
@@ -470,7 +492,7 @@ document.addEventListener('DOMContentLoaded', function () {
             date: dateStr, 
             sessionType: sessionType, 
             activity: workoutData[sessionType],
-            details: workoutData.details 
+            details: workoutData[`${sessionType}_details`]
         };
         isRescheduling = true;
         
@@ -479,35 +501,72 @@ document.addEventListener('DOMContentLoaded', function () {
         appContainer.classList.add('reschedule-mode');
     }
     
-    function completeReschedule(newDateStr, newSessionType) {
-        if(!isRescheduling || !workoutToReschedule) return;
+    function handleReschedule(targetDate, targetSession, action) {
+        const sourceDate = workoutToReschedule.date;
+        const sourceSession = workoutToReschedule.sessionType;
+        const sourceActivity = workoutToReschedule.activity;
+        const sourceDetails = workoutToReschedule.details;
 
-        const originalDayIndex = trainingData.findIndex(d => d.date === workoutToReschedule.date);
-        let targetDayIndex = trainingData.findIndex(d => d.date === newDateStr);
+        let sourceDay = trainingData.find(d => d.date === sourceDate);
+        let targetDay = trainingData.find(d => d.date === targetDate);
 
-        if (targetDayIndex > -1 && trainingData[targetDayIndex][newSessionType] !== '(Rest)') {
-            if (!confirm(`The ${newSessionType.toUpperCase()} session on ${new Date(newDateStr + 'T12:00:00').toLocaleDateString()} is already booked. Overwrite it?`)) {
-                cancelReschedule();
-                return;
+        if (!targetDay) {
+            targetDay = { date: targetDate, am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
+            trainingData.push(targetDay);
+        }
+
+        const targetActivity = targetDay[targetSession];
+        const targetDetails = targetDay[`${targetSession}_details`];
+        
+        if (action === 'swap') {
+            targetDay[targetSession] = sourceActivity;
+            targetDay[`${targetSession}_details`] = sourceDetails;
+
+            if (sourceDay) {
+                sourceDay[sourceSession] = targetActivity;
+                sourceDay[`${sourceSession}_details`] = targetDetails;
+            }
+        } else { // Overwrite
+            targetDay[targetSession] = sourceActivity;
+            targetDay[`${targetSession}_details`] = sourceDetails;
+
+            if (sourceDay) {
+                sourceDay[sourceSession] = '(Rest)';
+                sourceDay[`${sourceSession}_details`] = '';
             }
         }
-
-        if (originalDayIndex > -1) {
-            trainingData[originalDayIndex][workoutToReschedule.sessionType] = '(Rest)';
-        }
-
-        if (targetDayIndex === -1) {
-             trainingData.push({ date: newDateStr, am: '(Rest)', pm: '(Rest)', details: '' });
-             targetDayIndex = trainingData.length - 1;
-        }
-
-        trainingData[targetDayIndex][newSessionType] = workoutToReschedule.activity;
         
         trainingData.sort((a,b) => new Date(a.date) - new Date(b.date));
-        
         saveDataToLocal();
         cancelReschedule();
         refreshApp();
+    }
+    
+    function completeReschedule(newDateStr, newSessionType) {
+        if(!isRescheduling || !workoutToReschedule) return;
+
+        let targetDay = trainingData.find(d => d.date === newDateStr);
+        const targetActivity = targetDay ? targetDay[newSessionType] : '(Rest)';
+        
+        if (targetActivity && targetActivity !== '(Rest)') {
+            swapModalText.textContent = `Do you want to swap with "${targetActivity}" or overwrite it?`;
+            swapModal.classList.remove('hidden');
+            
+            swapBtn.onclick = () => {
+                swapModal.classList.add('hidden');
+                handleReschedule(newDateStr, newSessionType, 'swap');
+            };
+            overwriteBtn.onclick = () => {
+                swapModal.classList.add('hidden');
+                handleReschedule(newDateStr, newSessionType, 'overwrite');
+            };
+            cancelSwapBtn.onclick = () => {
+                 swapModal.classList.add('hidden');
+                 cancelReschedule();
+            }
+        } else {
+            handleReschedule(newDateStr, newSessionType, 'overwrite');
+        }
     }
 
     function cancelReschedule() {
@@ -519,25 +578,23 @@ document.addEventListener('DOMContentLoaded', function () {
     
     function updateTodaysWorkout() {
         const todayStr = today.toISOString().split('T')[0];
-        const workout = trainingData.find(w => w.date === todayStr);
+        const workout = trainingData.find(w => w.date === todayStr) || { am: '(Rest)', am_details: '', pm: '(Rest)', pm_details: '' };
         const container = document.getElementById('today-content');
-        if (workout) {
-            container.innerHTML = `
-                <div class="space-y-4">
-                    <div class="border-l-4 border-indigo-500 pl-3">
-                        <p class="text-sm font-medium text-gray-500">AM</p>
-                        <p class="text-lg font-bold">${workout.am}</p>
-                    </div>
-                     <div class="border-l-4 border-teal-500 pl-3">
-                        <p class="text-sm font-medium text-gray-500">PM</p>
-                        <p class="text-lg font-bold">${workout.pm}</p>
-                    </div>
-                    <p class="text-gray-700 pt-2">${workout.details || ""}</p>
+        
+        container.innerHTML = `
+            <div class="space-y-4">
+                <div class="border-l-4 border-indigo-500 pl-3">
+                    <p class="text-sm font-medium text-gray-500">AM</p>
+                    <p class="text-lg font-bold">${workout.am}</p>
+                    <p class="text-xs text-gray-600">${workout.am_details || ""}</p>
                 </div>
-            `;
-        } else {
-            container.innerHTML = `<p class="text-gray-600">No training scheduled for today. Enjoy the rest!</p>`;
-        }
+                 <div class="border-l-4 border-teal-500 pl-3">
+                    <p class="text-sm font-medium text-gray-500">PM</p>
+                    <p class="text-lg font-bold">${workout.pm}</p>
+                     <p class="text-xs text-gray-600">${workout.pm_details || ""}</p>
+                </div>
+            </div>
+        `;
     }
     
     function updateCountdowns() {
