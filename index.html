@@ -13,6 +13,7 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f3f4f6;
+            overflow-x: hidden;
         }
         .calendar-row {
             transition: background-color 0.2s ease-in-out;
@@ -20,6 +21,7 @@
         .session-cell {
             transition: background-color 0.2s ease-in-out;
             cursor: pointer;
+            min-height: 70px; /* Ensure cells have a minimum height */
         }
         .session-cell:hover {
             background-color: #eef2ff; /* indigo-50 */
@@ -122,15 +124,11 @@
         </div>
 
         <footer class="text-center p-4 border-t border-gray-200">
-             <div class="flex justify-center flex-wrap gap-4">
-                <button id="export-plan-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap">
-                    📤 Export Plan to CSV
-                </button>
-                <button id="force-reload-btn" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors whitespace-nowrap">
-                    🔄 Reset & Reload from Sheet
+             <div class="flex justify-center">
+                <button id="settings-btn" class="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-800 transition-colors">
+                    ⚙️ Data Source Settings
                 </button>
             </div>
-            <p class="text-xs text-gray-500 mt-4">Your changes are saved automatically. Use "Reset" to re-sync from your master Google Sheet.</p>
         </footer>
 
     </div>
@@ -156,6 +154,24 @@
             </div>
         </div>
     </div>
+    
+    <div id="settings-modal" class="fixed inset-0 custom-modal-backdrop z-[101] hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative">
+            <button id="close-settings-modal" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800">&times;</button>
+            <h3 class="text-2xl font-bold mb-6 text-gray-900">Data Settings</h3>
+            <div class="space-y-4">
+                <button id="export-plan-btn" class="w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-600 transition-colors text-left flex items-center gap-3">
+                    📤 <span class="flex-grow">Export Current Data to CSV</span>
+                </button>
+                <button id="force-reload-btn" class="w-full bg-gray-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors text-left flex items-center gap-3">
+                    🔄 <span class="flex-grow">Reload from Current Source</span>
+                </button>
+                <button id="change-source-btn" class="w-full bg-red-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-red-600 transition-colors text-left flex items-center gap-3">
+                    🗑️ <span class="flex-grow">Change Data Source (Reset App)</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
 <script>
 let trainingData = [];
@@ -167,8 +183,13 @@ document.addEventListener('DOMContentLoaded', function () {
     const sheetUrlInput = document.getElementById('sheet-url-input');
     const loadDataBtn = document.getElementById('load-data-btn');
     const setupErrorEl = document.getElementById('setup-error');
+    
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsModalBtn = document.getElementById('close-settings-modal');
     const exportPlanBtn = document.getElementById('export-plan-btn');
     const forceReloadBtn = document.getElementById('force-reload-btn');
+    const changeSourceBtn = document.getElementById('change-source-btn');
     
     const helpModal = document.getElementById('help-modal');
     const showHelpBtn = document.getElementById('show-help-btn');
@@ -197,7 +218,10 @@ document.addEventListener('DOMContentLoaded', function () {
     today.setHours(0, 0, 0, 0); 
     
     let currentStartDate = new Date(today);
-    currentStartDate.setDate(currentStartDate.getDate() - today.getDay());
+    // Set to the Monday of the current week.
+    const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    currentStartDate.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+
 
     let isRescheduling = false;
     let workoutToReschedule = null; 
@@ -307,7 +331,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderCalendar() {
         calendarEl.innerHTML = '';
         
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < 7; i++) { // Always show 7 days of the week
             const dayDate = new Date(currentStartDate);
             dayDate.setDate(dayDate.getDate() + i);
             const dateStr = dayDate.toISOString().split('T')[0];
@@ -326,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function () {
             dateCell.className = 'w-1/4 md:w-1/5 text-center p-2 rounded-l-lg bg-gray-100 flex flex-col justify-center';
             dateCell.innerHTML = `
                 <div class="font-bold text-lg text-gray-800">${dayDate.toLocaleDateString('en-US', {day: 'numeric'})}</div>
-                <div class="text-xs text-gray-500">${dayDate.toLocaleDateString('en-US', {weekday: 'short'})}</div>
+                <div class="text-xs text-gray-500">${dayDate.toLocaleDateString('en-US', {weekday: 'long'})}</div>
             `;
             dayRow.appendChild(dateCell);
 
@@ -343,10 +367,10 @@ document.addEventListener('DOMContentLoaded', function () {
             amCell.dataset.session = 'am';
             amCell.dataset.fulldate = dateStr;
             amCell.innerHTML = `
-                <div class="w-8 text-center font-bold text-indigo-500">AM</div>
+                <div class="w-8 text-center font-bold text-indigo-500 self-start pt-1">AM</div>
                 <div class="flex-grow pl-2 border-l border-gray-200">
-                    <p class="font-semibold text-sm truncate">${getWorkoutIcon(amSession)} ${amSession}</p>
-                    <p class="text-xs text-gray-500 truncate">${amDetails}</p>
+                    <p class="font-semibold text-sm whitespace-normal">${getWorkoutIcon(amSession)} ${amSession}</p>
+                    <p class="text-xs text-gray-500 whitespace-normal">${amDetails}</p>
                 </div>
             `;
             
@@ -355,10 +379,10 @@ document.addEventListener('DOMContentLoaded', function () {
             pmCell.dataset.session = 'pm';
             pmCell.dataset.fulldate = dateStr;
             pmCell.innerHTML = `
-                <div class="w-8 text-center font-bold text-teal-500">PM</div>
+                <div class="w-8 text-center font-bold text-teal-500 self-start pt-1">PM</div>
                 <div class="flex-grow pl-2 border-l border-gray-200">
-                    <p class="font-semibold text-sm truncate">${getWorkoutIcon(pmSession)} ${pmSession}</p>
-                    <p class="text-xs text-gray-500 truncate">${pmDetails}</p>
+                    <p class="font-semibold text-sm whitespace-normal">${getWorkoutIcon(pmSession)} ${pmSession}</p>
+                    <p class="text-xs text-gray-500 whitespace-normal">${pmDetails}</p>
                 </div>
             `;
 
@@ -736,16 +760,29 @@ document.addEventListener('DOMContentLoaded', function () {
         
         showHelpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
         closeHelpModalBtn.addEventListener('click', () => helpModal.classList.add('hidden'));
-        exportPlanBtn.addEventListener('click', exportToCSV);
+
+        settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+        closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+        
+        exportPlanBtn.addEventListener('click', () => {
+            exportToCSV();
+            settingsModal.classList.add('hidden');
+        });
+
         forceReloadBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to reset your plan? This will delete all local changes and reload from your master Google Sheet.')) {
-                localStorage.removeItem('savedTrainingData');
+            if (confirm('Are you sure? This will discard your local changes and reload the original plan from your Google Sheet.')) {
                 const savedUrl = localStorage.getItem('googleSheetUrl');
                 if (savedUrl) {
                     fetchData(savedUrl);
-                } else {
-                     location.reload();
                 }
+                settingsModal.classList.add('hidden');
+            }
+        });
+
+        changeSourceBtn.addEventListener('click', () => {
+             if (confirm('Are you sure? This will clear all data and take you to the setup screen.')) {
+                localStorage.clear();
+                location.reload();
             }
         });
 
